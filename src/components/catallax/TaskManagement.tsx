@@ -32,7 +32,6 @@ interface TaskManagementProps {
   onUpdate?: () => void;
   /** @deprecated Real zaps are always enabled */
   realZapsEnabled?: boolean;
-  realNutsEnabled?: boolean;
 }
 
 export function TaskManagement({ task, onUpdate }: TaskManagementProps) {

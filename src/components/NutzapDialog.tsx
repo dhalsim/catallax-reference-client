@@ -166,7 +166,7 @@ export function NutzapDialog({
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="1000"
-              disabled={!canReceive || !hasWallet}
+              disabled={!(canReceive && hasWallet)}
             />
             {availableBalance > 0 && (
               <p className="text-xs text-muted-foreground">
@@ -193,7 +193,7 @@ export function NutzapDialog({
               onChange={(e) => setComment(e.target.value)}
               placeholder="Thanks!"
               rows={2}
-              disabled={!canReceive || !hasWallet}
+              disabled={!(canReceive && hasWallet)}
             />
           </div>
 
