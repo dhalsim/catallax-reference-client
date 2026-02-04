@@ -30,6 +30,7 @@ import { TaskManagement } from '@/components/catallax/TaskManagement';
 import { TaskFilters, applyTaskFilters, type TaskFilterState } from '@/components/catallax/TaskFilters';
 import { ArbiterFilters, applyArbiterFilters, type ArbiterFilterState } from '@/components/catallax/ArbiterFilters';
 import { Plus, Shield, Briefcase, User, Search, Settings, Info } from 'lucide-react';
+import { NutzapWalletSetup } from '@/components/NutzapWalletSetup';
 import { CATALLAX_KINDS, type TaskProposal } from '@/lib/catallax';
 
 export default function CatallaxDashboard() {
@@ -581,6 +582,10 @@ export default function CatallaxDashboard() {
               </p>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="settings" className="space-y-6">
+          <NutzapWalletSetup />
         </TabsContent>
       </Tabs>
 

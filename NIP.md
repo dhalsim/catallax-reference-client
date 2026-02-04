@@ -78,7 +78,7 @@ Catallax enables decentralized contract work through a simple escrow system buil
     ["t", "<task category (optional)>"],
     ["t", "<additional task categories (optional)>"],
     ["status", "<proposed|funded|in_progress|submitted|concluded>"],
-    ["e", "<event-id of zap receipt when escrow funded>", "<relay-url>", "zap"],
+    ["e", "<event-id of payment receipt when escrow funded>", "<relay-url>", "<zap|nutzap>"],
     ["r", "<string (optional); task details web URL>"]
   ]
 }
@@ -95,7 +95,7 @@ Catallax enables decentralized contract work through a simple escrow system buil
     "resolution_details": "String: description of the task outcome and resolution"
   },
   "tags": [
-    ["e", "<payout-zap-receipt-event-id>", "<optional recommended relay URL>"],
+    ["e", "<payout-receipt-event-id>", "<optional recommended relay URL>", "<zap|nutzap>"],
     ["e", "<task-proposal-event-id>", "<optional recommended relay URL>"],
     ["p", "<patron-pubkey>", "<optional recommended relay URL>"],
     ["p", "<arbiter-pubkey>", "<optional recommended relay URL>"],
@@ -108,7 +108,7 @@ Catallax enables decentralized contract work through a simple escrow system buil
 
 ### Kind 9041: Zap Goal (NIP-75)
 
-Used for **crowdfunded tasks**. When a task proposal has `funding_type` set to `crowdfunding`, a linked Kind 9041 event is created to enable multiple contributors to fund the task.
+Used for **crowdfunded tasks**. When a task proposal has `funding_type` set to `crowdfunding`, a linked Kind 9041 event is created to enable multiple contributors to fund the task. Zap goals can only be funded with zaps and not with nutzaps.
 
 ```json
 {
@@ -152,3 +152,7 @@ This project implements a complete UI for testing all Catallax protocol features
 - Status tracking and workflow management
 
 All custom event kinds use the `t` tag with "catallax" for efficient relay-level filtering within the Catallax ecosystem.
+
+### Nutzap (NIP-60 / NIP-61)
+
+This client uses **NIP-60** (Cashu Wallets) and **NIP-61** (Nutzaps) for Nutzap payments. Kind **17375** (replaceable) stores the user's encrypted P2PK privkey and mints the wallet uses; kind **10019** (replaceable) is the public receive config (relays, mints, P2PK pubkey). When the user publishes an updated Nutzap config (10019), the client also updates the wallet event (17375) so that its mints list is the **union** of the previous wallet mints and the new config mints, keeping wallet and receive config in sync.

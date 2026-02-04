@@ -19,6 +19,9 @@ import { Zap, Bitcoin, RefreshCw, Bug, AlertTriangle, Loader2, CheckCircle } fro
 import { CATALLAX_KINDS, formatSats, getStatusColor, calculatePaymentSplit, calculateCrowdfundingRefunds, calculateArbiterFee, parseArbiterAnnouncement, type TaskProposal, type TaskStatus, type ArbiterAnnouncement, type PaymentSplit } from '@/lib/catallax';
 import { TaskConclusionForm } from './TaskConclusionForm';
 import { LightningPaymentDialog } from './LightningPaymentDialog';
+import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
+import { NutzapDialog } from '@/components/NutzapDialog';
+import { useCanReceiveNutzaps } from '@/hooks/useNutzapConfig';
 import { LightningSplitPaymentDialog } from './LightningSplitPaymentDialog';
 import { GoalProgressBar } from './GoalProgressBar';
 import { ContributorsList } from './ContributorsList';
@@ -29,6 +32,7 @@ interface TaskManagementProps {
   onUpdate?: () => void;
   /** @deprecated Real zaps are always enabled */
   realZapsEnabled?: boolean;
+  realNutsEnabled?: boolean;
 }
 
 export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
@@ -88,6 +92,16 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
   const [showRefundSplitDialog, setShowRefundSplitDialog] = useState(false);
   const [showPayoutSplitDialog, setShowPayoutSplitDialog] = useState(false);
   const [conclusionZapReceiptId, setConclusionZapReceiptId] = useState('');
+  const [showPaymentMethodForFund, setShowPaymentMethodForFund] = useState(false);
+  const [showPaymentMethodForPayout, setShowPaymentMethodForPayout] = useState(false);
+  const [showPaymentMethodForRefund, setShowPaymentMethodForRefund] = useState(false);
+  const [showNutzapFundDialog, setShowNutzapFundDialog] = useState(false);
+  const [showNutzapPayoutDialog, setShowNutzapPayoutDialog] = useState(false);
+  const [showNutzapRefundDialog, setShowNutzapRefundDialog] = useState(false);
+
+  const { canReceive: arbiterAcceptsNutzaps } = useCanReceiveNutzaps(task.arbiterPubkey);
+  const { canReceive: workerAcceptsNutzaps } = useCanReceiveNutzaps(task.workerPubkey);
+  const { canReceive: patronAcceptsNutzaps } = useCanReceiveNutzaps(task.patronPubkey);
   const [cancelState, setCancelState] = useState<'idle' | 'syncing' | 'complete'>('idle');
 
   // Generic operation state for funding, worker assignment, etc.
@@ -796,7 +810,13 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
                   </AlertDescription>
                 </Alert>
                 <Button
-                  onClick={() => setShowFundDialog(true)}
+                  onClick={() => {
+                    if (arbiterAcceptsNutzaps) {
+                      setShowPaymentMethodForFund(true);
+                    } else {
+                      setShowFundDialog(true);
+                    }
+                  }}
                   disabled={isPending}
                   className="w-full"
                 >
@@ -1040,7 +1060,13 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {task.workerPubkey && (
                 <Button
-                  onClick={handlePayWorkerWithSplit}
+                  onClick={() => {
+                    if (workerAcceptsNutzaps) {
+                      setShowPaymentMethodForPayout(true);
+                    } else {
+                      handlePayWorkerWithSplit();
+                    }
+                  }}
                   disabled={isPending}
                   className="w-full"
                 >
@@ -1055,7 +1081,13 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
               )}
 
               <Button
-                onClick={handleRefundPatronWithSplit}
+                onClick={() => {
+                  if (patronAcceptsNutzaps) {
+                    setShowPaymentMethodForRefund(true);
+                  } else {
+                    handleRefundPatronWithSplit();
+                  }
+                }}
                 disabled={isPending}
                 variant="outline"
                 className="w-full"
@@ -1197,6 +1229,96 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
         purpose={`Refund for task: ${task.content.title}`}
         onPaymentComplete={handleRefundPatron}
         eventReference={`${CATALLAX_KINDS.TASK_PROPOSAL}:${task.patronPubkey}:${task.d}`}
+      />
+
+      {/* Payment method selector (Lightning vs Nutzap) for fund escrow */}
+      {task.arbiterPubkey && (
+        <PaymentMethodSelector
+          open={showPaymentMethodForFund}
+          onOpenChange={setShowPaymentMethodForFund}
+          canReceiveNutzap={arbiterAcceptsNutzaps}
+          purpose={`Escrow for task: ${task.content.title}`}
+          onSelectLightning={() => {
+            setShowPaymentMethodForFund(false);
+            setShowFundDialog(true);
+          }}
+          onSelectNutzap={() => {
+            setShowPaymentMethodForFund(false);
+            setShowNutzapFundDialog(true);
+          }}
+        />
+      )}
+
+      {task.arbiterPubkey && (
+        <NutzapDialog
+          open={showNutzapFundDialog}
+          onOpenChange={setShowNutzapFundDialog}
+          recipientPubkey={task.arbiterPubkey}
+          amount={parseInt(task.amount)}
+          purpose={`Escrow funding for task: ${task.content.title}`}
+          onComplete={(nutzapEventId) => {
+            handleFundEscrow(nutzapEventId);
+            setShowNutzapFundDialog(false);
+          }}
+        />
+      )}
+
+      {task.workerPubkey && (
+        <PaymentMethodSelector
+          open={showPaymentMethodForPayout}
+          onOpenChange={setShowPaymentMethodForPayout}
+          canReceiveNutzap={workerAcceptsNutzaps}
+          purpose={`Pay worker for: ${task.content.title}`}
+          onSelectLightning={() => {
+            setShowPaymentMethodForPayout(false);
+            handlePayWorkerWithSplit();
+          }}
+          onSelectNutzap={() => {
+            setShowPaymentMethodForPayout(false);
+            setShowNutzapPayoutDialog(true);
+          }}
+        />
+      )}
+
+      {task.workerPubkey && (
+        <NutzapDialog
+          open={showNutzapPayoutDialog}
+          onOpenChange={setShowNutzapPayoutDialog}
+          recipientPubkey={task.workerPubkey}
+          amount={parseInt(task.amount)}
+          purpose={`Payment for completed work: ${task.content.title}`}
+          onComplete={(nutzapEventId) => {
+            handlePayWorker(nutzapEventId);
+            setShowNutzapPayoutDialog(false);
+          }}
+        />
+      )}
+
+      <PaymentMethodSelector
+        open={showPaymentMethodForRefund}
+        onOpenChange={setShowPaymentMethodForRefund}
+        canReceiveNutzap={patronAcceptsNutzaps}
+        purpose={`Refund for task: ${task.content.title}`}
+        onSelectLightning={() => {
+          setShowPaymentMethodForRefund(false);
+          handleRefundPatronWithSplit();
+        }}
+        onSelectNutzap={() => {
+          setShowPaymentMethodForRefund(false);
+          setShowNutzapRefundDialog(true);
+        }}
+      />
+
+      <NutzapDialog
+        open={showNutzapRefundDialog}
+        onOpenChange={setShowNutzapRefundDialog}
+        recipientPubkey={task.patronPubkey}
+        amount={parseInt(task.amount)}
+        purpose={`Refund for task: ${task.content.title}`}
+        onComplete={(nutzapEventId) => {
+          handleRefundPatron(nutzapEventId);
+          setShowNutzapRefundDialog(false);
+        }}
       />
     </Card>
   );

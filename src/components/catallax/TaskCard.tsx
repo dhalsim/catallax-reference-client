@@ -9,11 +9,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ExternalLink, Calendar, User, Zap, Copy, MoreVertical, Eye } from 'lucide-react';
+import { useCanReceiveNutzaps } from '@/hooks/useNutzapConfig';
 import { genUserName } from '@/lib/genUserName';
 import { formatSats, getStatusColor, type TaskProposal, CATALLAX_KINDS } from '@/lib/catallax';
 import { LightningPaymentDialog } from './LightningPaymentDialog';
 import { GoalProgressBar } from './GoalProgressBar';
 import { CrowdfundButton } from './CrowdfundButton';
+import { NutzapDialog } from '@/components/NutzapDialog';
+import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { CopyNpubButton } from '@/components/CopyNpubButton';
 import { format } from 'date-fns';
 
@@ -32,8 +35,11 @@ interface TaskCardProps {
 export function TaskCard({ task, onApply, onManage, onFund, showApplyButton, showManageButton, showFundButton }: TaskCardProps) {
   const { user } = useCurrentUser();
   const { toast } = useToast();
+  const { canReceive: arbiterAcceptsNutzaps } = useCanReceiveNutzaps(task.arbiterPubkey ?? undefined);
   const [showFundDialog, setShowFundDialog] = useState(false);
   const [waitingForPayment, setWaitingForPayment] = useState(false);
+  const [showPaymentMethodForFund, setShowPaymentMethodForFund] = useState(false);
+  const [showNutzapFundDialog, setShowNutzapFundDialog] = useState(false);
   const patronAuthor = useAuthor(task.patronPubkey);
   const arbiterAuthor = useAuthor(task.arbiterPubkey || '');
   const workerAuthor = useAuthor(task.workerPubkey || '');
@@ -211,7 +217,17 @@ export function TaskCard({ task, onApply, onManage, onFund, showApplyButton, sho
           )}
 
           {showFundButton && onFund && task.status === 'proposed' && task.arbiterPubkey && user && user.pubkey === task.patronPubkey && task.fundingType !== 'crowdfunding' && (
-            <Button size="sm" onClick={() => setShowFundDialog(true)} className="ml-auto">
+            <Button
+              size="sm"
+              onClick={() => {
+                if (arbiterAcceptsNutzaps) {
+                  setShowPaymentMethodForFund(true);
+                } else {
+                  setShowFundDialog(true);
+                }
+              }}
+              className="ml-auto"
+            >
               <Zap className="h-4 w-4 mr-1" />
               Fund
             </Button>
@@ -232,7 +248,25 @@ export function TaskCard({ task, onApply, onManage, onFund, showApplyButton, sho
           )}
         </div>
 
-        {/* Fund Dialog */}
+        {/* Payment method selector for fund */}
+        {task.arbiterPubkey && (
+          <PaymentMethodSelector
+            open={showPaymentMethodForFund}
+            onOpenChange={setShowPaymentMethodForFund}
+            canReceiveNutzap={arbiterAcceptsNutzaps}
+            purpose={`Escrow for task: ${task.content.title}`}
+            onSelectLightning={() => {
+              setShowPaymentMethodForFund(false);
+              setShowFundDialog(true);
+            }}
+            onSelectNutzap={() => {
+              setShowPaymentMethodForFund(false);
+              setShowNutzapFundDialog(true);
+            }}
+          />
+        )}
+
+        {/* Fund Dialogs */}
         {task.arbiterPubkey && (
           <LightningPaymentDialog
             open={showFundDialog}
@@ -243,6 +277,20 @@ export function TaskCard({ task, onApply, onManage, onFund, showApplyButton, sho
             onPaymentComplete={(zapReceiptId: string) => {
               onFund?.(task, zapReceiptId);
               setShowFundDialog(false);
+            }}
+          />
+        )}
+
+        {task.arbiterPubkey && (
+          <NutzapDialog
+            open={showNutzapFundDialog}
+            onOpenChange={setShowNutzapFundDialog}
+            recipientPubkey={task.arbiterPubkey}
+            amount={parseInt(task.amount)}
+            purpose={`Escrow funding for task: ${task.content.title}`}
+            onComplete={(nutzapEventId) => {
+              onFund?.(task, nutzapEventId);
+              setShowNutzapFundDialog(false);
             }}
           />
         )}
