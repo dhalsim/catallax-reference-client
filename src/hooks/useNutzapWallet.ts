@@ -134,10 +134,6 @@ export function useNutzapWallet() {
   }
 
   const wallet = walletQuery.data;
-
-  console.log('wallet', wallet);
-  console.log('tokens', tokensQuery.data);
-
   const p2pkPubkey = wallet?.pubkeyHex ?? null;
 
   return {

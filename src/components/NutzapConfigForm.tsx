@@ -17,7 +17,10 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatSats } from '@/lib/catallax';
-import { Plus, Trash2, Wallet } from 'lucide-react';
+import { Plus, Trash2, Wallet, ArrowUpRight, ArrowDownLeft, Copy } from 'lucide-react';
+import { NutzapSendFromMintDialog } from '@/components/NutzapSendFromMintDialog';
+import { NutzapReceiveTokenDialog } from '@/components/NutzapReceiveTokenDialog';
+import { NutzapSendTokenDialog } from '@/components/NutzapSendTokenDialog';
 
 const DEFAULT_RELAYS = ['wss://relay.nostr.band'];
 const DEFAULT_MINTS = [
@@ -35,14 +38,17 @@ export function NutzapConfigForm() {
   const { p2pkPubkey, hasWallet, balances } = useNutzapWallet();
   const { toast } = useToast();
 
-  const totalSpendable =
-    Array.from(balances.values()).reduce((s, n) => s + n, 0) ?? 0;
   const seededFromConfig = useRef(false);
+
+  const getMintBalance = (mintUrl: string) => balances.get(mintUrl) ?? 0;
 
   const [relays, setRelays] = useState<string[]>(DEFAULT_RELAYS);
   const [mints, setMints] = useState<string[]>([DEFAULT_MINTS[0]]);
   const [newRelay, setNewRelay] = useState('');
   const [newMint, setNewMint] = useState('');
+  const [sendMintUrl, setSendMintUrl] = useState<string | null>(null);
+  const [receiveMintUrl, setReceiveMintUrl] = useState<string | null>(null);
+  const [sendTokenMintUrl, setSendTokenMintUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (config && !seededFromConfig.current) {
@@ -161,16 +167,6 @@ export function NutzapConfigForm() {
       </CardHeader>
       <CardContent className="space-y-6">
         <div>
-          <Label>Spendable balance</Label>
-          <p className="mt-1 text-lg font-medium">
-            {formatSats(totalSpendable)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Total across all mints in your wallet
-          </p>
-        </div>
-
-        <div>
           <Label>Your P2PK public key</Label>
           <code className="mt-1 block break-all rounded bg-muted p-2 text-xs">
             {p2pkPubkey}
@@ -212,25 +208,68 @@ export function NutzapConfigForm() {
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label>Trusted mints</Label>
-          <div className="flex flex-wrap gap-2">
-            {mints.map((mint) => (
-              <Badge
-                key={mint}
-                variant="secondary"
-                className="flex items-center gap-1"
-              >
-                {new URL(mint).hostname}
-                <button
-                  type="button"
-                  onClick={() => setMints(mints.filter((m) => m !== mint))}
-                  aria-label={`Remove ${mint}`}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
+        <div className="space-y-3">
+          <Label>Mints</Label>
+          <p className="text-xs text-muted-foreground">
+            Per mint: receive tokens (paste from other wallets), create tokens to
+            send elsewhere, or send nutzaps via Nostr.
+          </p>
+          <div className="space-y-3">
+            {mints.map((mintUrl) => {
+              const mintName = new URL(mintUrl).hostname;
+              const balance = getMintBalance(mintUrl);
+              return (
+                <Card key={mintUrl}>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{mintName}</p>
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          <span aria-hidden>≐</span>
+                          {formatSats(balance)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSendMintUrl(mintUrl)}
+                          disabled={balance <= 0}
+                        >
+                          <ArrowUpRight className="h-4 w-4 mr-1" />
+                          Nutzap
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSendTokenMintUrl(mintUrl)}
+                          disabled={balance <= 0}
+                        >
+                          <Copy className="h-4 w-4 mr-1" />
+                          Token
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setReceiveMintUrl(mintUrl)}
+                        >
+                          <ArrowDownLeft className="h-4 w-4 mr-1" />
+                          Receive
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setMints(mints.filter((m) => m !== mintUrl))}
+                          aria-label={`Remove ${mintName}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
           <div className="flex gap-2">
             <Input
@@ -242,7 +281,7 @@ export function NutzapConfigForm() {
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1">
             {DEFAULT_MINTS.filter((m) => !mints.includes(m)).map((mint) => (
               <Button
                 key={mint}
@@ -256,6 +295,35 @@ export function NutzapConfigForm() {
             ))}
           </div>
         </div>
+
+        {sendMintUrl && (
+          <NutzapSendFromMintDialog
+            open={!!sendMintUrl}
+            onOpenChange={(open) => !open && setSendMintUrl(null)}
+            mintUrl={sendMintUrl}
+            mintName={new URL(sendMintUrl).hostname}
+            balance={getMintBalance(sendMintUrl)}
+          />
+        )}
+
+        {receiveMintUrl && (
+          <NutzapReceiveTokenDialog
+            open={!!receiveMintUrl}
+            onOpenChange={(open) => !open && setReceiveMintUrl(null)}
+            mintUrl={receiveMintUrl}
+            mintName={new URL(receiveMintUrl).hostname}
+          />
+        )}
+
+        {sendTokenMintUrl && (
+          <NutzapSendTokenDialog
+            open={!!sendTokenMintUrl}
+            onOpenChange={(open) => !open && setSendTokenMintUrl(null)}
+            mintUrl={sendTokenMintUrl}
+            mintName={new URL(sendTokenMintUrl).hostname}
+            balance={getMintBalance(sendTokenMintUrl)}
+          />
+        )}
 
         <Button
           onClick={handleSubmit}

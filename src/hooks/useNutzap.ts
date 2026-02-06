@@ -13,6 +13,8 @@ export interface NutzapRequest {
   comment?: string;
   eventId?: string;
   eventKind?: number;
+  /** When sending from a specific mint card, prefer this mint (recipient must accept it). */
+  preferredMintUrl?: string;
 }
 
 export interface NutzapResult {
@@ -66,9 +68,13 @@ export function useNutzap() {
         throw new Error('Invalid nutzap configuration');
       }
 
-      const commonMint = config.mints.find(
+      const candidateMints = config.mints.filter(
         (m) => mints.includes(m.url) && m.units.includes('sat')
       );
+      const commonMint = request.preferredMintUrl &&
+        candidateMints.some((m) => m.url === request.preferredMintUrl)
+        ? candidateMints.find((m) => m.url === request.preferredMintUrl)
+        : candidateMints[0];
 
       if (!commonMint) {
         throw new Error(

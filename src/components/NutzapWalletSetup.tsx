@@ -91,10 +91,11 @@ export function NutzapWalletSetup() {
           Your key is stored encrypted in a kind 17375 event.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
         <Button
           onClick={handleCreate}
           disabled={isPending || creating}
+          className="w-full"
         >
           <Wallet className="mr-2 h-4 w-4" />
           {isPending || creating ? 'Creating…' : 'Create wallet'}
