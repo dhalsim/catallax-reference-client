@@ -155,4 +155,79 @@ All custom event kinds use the `t` tag with "catallax" for efficient relay-level
 
 ### Nutzap (NIP-60 / NIP-61)
 
-This client uses **NIP-60** (Cashu Wallets) and **NIP-61** (Nutzaps) for Nutzap payments. Kind **17375** (replaceable) stores the user's encrypted P2PK privkey and mints the wallet uses; kind **10019** (replaceable) is the public receive config (relays, mints, P2PK pubkey). When the user publishes an updated Nutzap config (10019), the client also updates the wallet event (17375) so that its mints list is the **union** of the previous wallet mints and the new config mints, keeping wallet and receive config in sync.
+This client uses **NIP-60** (Cashu Wallets) and **NIP-61** (Nutzaps) for Nutzap payments. Kinds used (see `src/lib/nutzap.ts`):
+
+#### Kind 17375: Cashu wallet (replaceable)
+
+Encrypted P2PK privkey and mints. Content is NIP-44 encrypted.
+
+```json
+{
+  "kind": 17375,
+  "content": "<nip44-encrypted: [[\"privkey\",\"<hex>\"],[\"mint\",\"<url>\"]]>",
+  "tags": []
+}
+```
+
+#### Kind 10019: Nutzap receive config (replaceable)
+
+Public config for receiving nutzaps: relays, mints, P2PK pubkey.
+
+```json
+{
+  "kind": 10019,
+  "content": "",
+  "tags": [
+    ["relay", "<relay-url-1>"],
+    ["relay", "<relay-url-2>"],
+    ["mint", "<mint-url>", "<unit>"],
+    ["pubkey", "<p2pk-pubkey-hex>"]
+  ]
+}
+```
+
+#### Kind 9321: Nutzap payment event
+
+The payment itself is the receipt. Proofs are P2PK-locked to the recipient's pubkey from their kind 10019.
+
+```json
+{
+  "kind": 9321,
+  "content": "<optional comment>",
+  "tags": [
+    ["proof", "<cashu-proof-json>"],
+    ["unit", "sat"],
+    ["u", "<mint-url>"],
+    ["e", "<nutzapped-event-id>", "<relay-hint>"],
+    ["k", "<nutzapped-kind>"],
+    ["p", "<recipient-nostr-pubkey>"]
+  ]
+}
+```
+
+#### Kind 7375: Token event
+
+Encrypted unspent proofs per mint. Content is NIP-44 encrypted.
+
+```json
+{
+  "kind": 7375,
+  "content": "<nip44-encrypted: {\"mint\":\"<url>\",\"unit\":\"sat\",\"proofs\":[...],\"del\":[\"<token-event-id>\"]}>",
+  "tags": []
+}
+```
+
+#### Kind 7376: Redemption / spending history (optional)
+
+Records when nutzaps are claimed. Content is NIP-44 encrypted; `e` tags with `redeemed` marker are typically unencrypted.
+
+```json
+{
+  "kind": 7376,
+  "content": "<nip44-encrypted: [[\"direction\",\"in\"],[\"amount\",\"<n>\"],[\"unit\",\"sat\"]]>",
+  "tags": [
+    ["e", "<9321-event-id>", "<relay-hint>", "redeemed"],
+    ["p", "<sender-pubkey>"]
+  ]
+}
+```

@@ -5,7 +5,7 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useNutzapWallet } from '@/hooks/useNutzapWallet';
 import { useToast } from '@/hooks/useToast';
 import { Wallet } from '@cashu/cashu-ts';
-import { parseNutzapConfig, buildNutzapTags } from '@/lib/nutzap';
+import { parseNutzapConfig, buildNutzapTags, NUTZAP_EVENT_KIND } from '@/lib/nutzap';
 
 export interface NutzapRequest {
   recipientPubkey: string;
@@ -118,7 +118,7 @@ export function useNutzap() {
       );
 
       const event = await createEvent({
-        kind: 9321,
+        kind: NUTZAP_EVENT_KIND,
         content: request.comment ?? '',
         tags,
       });
