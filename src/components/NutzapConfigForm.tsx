@@ -22,7 +22,7 @@ import { CashuReceiveTokenDialog } from '@/components/CashuReceiveTokenDialog';
 import { CashuSendTokenDialog } from '@/components/CashuSendTokenDialog';
 import { NutzapMintHistoryDialog } from '@/components/NutzapMintHistoryDialog';
 import { usePendingTokens } from '@/hooks/usePendingTokens';
-import { useAppContext } from '@/hooks/useAppContext';
+import { useActiveRelayUrls } from '@/hooks/useActiveRelayUrls';
 
 function normalizeMintUrl(input: string): string {
   const trimmed = input.trim();
@@ -47,7 +47,7 @@ function isValidMintUrl(url: string): boolean {
 
 export function NutzapConfigForm() {
   const { user } = useCurrentUser();
-  const { config: appConfig, presetRelays = [] } = useAppContext();
+  const activeRelayUrls = useActiveRelayUrls();
   const { data: config } = useNutzapConfig(user?.pubkey);
   const { mutateAsync: createEvent, isPending } = useNostrPublish();
   const { mutateAsync: updateWalletMints, isPending: isUpdatingMints } =
@@ -75,20 +75,6 @@ export function NutzapConfigForm() {
       seededRef.current = true;
     }
   }, [walletMints, config?.mints]);
-
-  function getActiveRelayUrls(): string[] {
-    if (appConfig.relayMode === 'custom' && appConfig.customRelay) {
-      return [appConfig.customRelay];
-    }
-    
-    if (appConfig.relayMode === 'user' && appConfig.userRelays?.length) {
-      return appConfig.userRelays;
-    }
-    
-    const urls = presetRelays.map((r) => r.url);
-    
-    return urls.length > 0 ? urls : ['wss://relay.nostr.band'];
-  }
 
   const handleAddMint = () => {
     const url = normalizeMintUrl(newMintInput);
@@ -132,7 +118,7 @@ export function NutzapConfigForm() {
       return;
     }
 
-    const relayUrls = getActiveRelayUrls();
+    const relayUrls = activeRelayUrls;
     
     const tags: string[][] = [];
 

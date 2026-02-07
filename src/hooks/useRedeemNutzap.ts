@@ -1,6 +1,7 @@
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
+import { useActiveRelayUrls } from '@/hooks/useActiveRelayUrls';
 import { useToast } from '@/hooks/useToast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Wallet } from '@cashu/cashu-ts';
@@ -10,6 +11,7 @@ import {
   NUTZAP_REDEMPTION_KIND,
   type ParsedNutzap,
 } from '@/lib/nutzap';
+import { parseReadRelaysFromNip65, mergeAndDeduplicateRelays } from '@/lib/relays';
 
 export function useRedeemNutzap() {
   const { user } = useCurrentUser();
@@ -17,6 +19,7 @@ export function useRedeemNutzap() {
   const { mutateAsync: createEvent } = useNostrPublish();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const activeRelayUrls = useActiveRelayUrls();
 
   return useMutation({
     mutationFn: async (nutzap: ParsedNutzap) => {
@@ -93,6 +96,18 @@ export function useRedeemNutzap() {
         historyContent
       );
 
+      // NIP-61: Publish 7376 to sender's NIP-65 read relays
+      const nip65Events = await nostr.query(
+        [{ kinds: [10002], authors: [nutzap.pubkey], limit: 1 }],
+        { signal: AbortSignal.timeout(5000) }
+      );
+      const senderReadRelays =
+        nip65Events.length > 0 ? parseReadRelaysFromNip65(nip65Events[0]) : [];
+      const redemptionRelays =
+        senderReadRelays.length > 0
+          ? mergeAndDeduplicateRelays(senderReadRelays)
+          : activeRelayUrls;
+
       await createEvent({
         kind: NUTZAP_REDEMPTION_KIND,
         content: encryptedHistoryContent,
@@ -100,6 +115,7 @@ export function useRedeemNutzap() {
           ['e', nutzap.id, '', 'redeemed'],
           ['p', nutzap.pubkey],
         ],
+        relays: redemptionRelays,
       });
 
       toast({

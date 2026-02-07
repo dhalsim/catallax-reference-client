@@ -94,7 +94,7 @@ export function NutzapSendDialog({
       const result = await sendNutzap({
         recipientPubkey,
         amount: defaultAmount,
-        preferredMintUrl: selectedMintUrl,
+        mintUrl: selectedMintUrl,
         eventId,
         eventKind,
       });

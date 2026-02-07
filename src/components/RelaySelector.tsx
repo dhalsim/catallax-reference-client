@@ -12,6 +12,7 @@ import { useState } from "react";
 import { useAppContext } from "@/hooks/useAppContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUserRelays } from "@/hooks/useUserRelays";
+import { useActiveRelayUrls } from "@/hooks/useActiveRelayUrls";
 
 interface RelaySelectorProps {
   className?: string;
@@ -27,25 +28,18 @@ export function RelaySelector(props: RelaySelectorProps) {
   const [customInput, setCustomInput] = useState("");
 
   const relayMode = config.relayMode ?? 'default';
+  const activeRelayUrls = useActiveRelayUrls();
 
-  // Get the active relay list based on current mode
-  const getActiveRelays = (): { name: string; url: string }[] => {
-    if (relayMode === 'custom' && config.customRelay) {
-      return [{ name: 'Custom', url: config.customRelay }];
-    }
-
-    if (relayMode === 'user' && config.userRelays && config.userRelays.length > 0) {
-      return config.userRelays.map(url => ({
-        name: url.replace(/^wss?:\/\//, '').split('/')[0],
-        url,
-      }));
-    }
-
-    // Default mode
-    return presetRelays;
-  };
-
-  const activeRelays = getActiveRelays();
+  // Derive { name, url }[] for display from activeRelayUrls
+  const activeRelays: { name: string; url: string }[] =
+    relayMode === 'custom'
+      ? [{ name: 'Custom', url: activeRelayUrls[0] ?? '' }]
+      : relayMode === 'user'
+        ? activeRelayUrls.map((url) => ({
+            name: url.replace(/^wss?:\/\//, '').split('/')[0],
+            url,
+          }))
+        : presetRelays;
 
   // Normalize relay URL
   const normalizeRelayUrl = (url: string): string => {

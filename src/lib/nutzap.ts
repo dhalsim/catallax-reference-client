@@ -138,10 +138,14 @@ export function buildNutzapTags(
   recipientPubkey: string,
   mintUrl: string,
   proofs: Proof[],
-  unit: string = 'sat',
-  eventId?: string,
-  eventKind?: number
+  unit: string,
+  eventId: string,
+  eventKind: string
 ): string[][] {
+  if (!eventId || !eventKind) {
+    throw new Error('eventId and eventKind are required');
+  }
+
   const tags: string[][] = [];
 
   for (const proof of proofs) {
@@ -151,13 +155,8 @@ export function buildNutzapTags(
   tags.push(['unit', unit]);
   tags.push(['u', mintUrl]);
   tags.push(['p', recipientPubkey]);
-
-  if (eventId) {
-    tags.push(['e', eventId, '']);
-    if (eventKind !== undefined) {
-      tags.push(['k', eventKind.toString()]);
-    }
-  }
+  tags.push(['e', eventId, '']);
+  tags.push(['k', eventKind]);
 
   return tags;
 }

@@ -6,15 +6,23 @@ import { CATALLAX_KINDS } from "@/lib/catallax";
 
 import type { NostrEvent } from "@nostrify/nostrify";
 
-export function useNostrPublish(): UseMutationResult<NostrEvent> {
+export type PublishEventInput = Pick<NostrEvent, 'kind'> & {
+  content?: string;
+  tags?: string[][];
+  created_at?: number;
+  relays?: string[];
+};
+
+export function useNostrPublish(): UseMutationResult<NostrEvent, Error, PublishEventInput> {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (t: Omit<NostrEvent, 'id' | 'pubkey' | 'sig'>) => {
+    mutationFn: async (t: PublishEventInput) => {
       if (user) {
-        const tags = t.tags ?? [];
+        const { relays, ...eventInput } = t;
+        const tags = eventInput.tags ?? [];
 
         // Add the client tag if it doesn't exist
         if (location.protocol === "https:" && !tags.some(([name]) => name === "client")) {
@@ -22,13 +30,18 @@ export function useNostrPublish(): UseMutationResult<NostrEvent> {
         }
 
         const event = await user.signer.signEvent({
-          kind: t.kind,
-          content: t.content ?? "",
+          kind: eventInput.kind,
+          content: eventInput.content ?? "",
           tags,
-          created_at: t.created_at ?? Math.floor(Date.now() / 1000),
+          created_at: eventInput.created_at ?? Math.floor(Date.now() / 1000),
         });
 
-        await nostr.event(event, { signal: AbortSignal.timeout(5000) });
+        const opts = { signal: AbortSignal.timeout(5000) as AbortSignal };
+        if (relays && relays.length > 0) {
+          await nostr.event(event, { ...opts, relays });
+        } else {
+          await nostr.event(event, opts);
+        }
         return event;
       } else {
         throw new Error("User is not logged in");

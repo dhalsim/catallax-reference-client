@@ -3,18 +3,19 @@ import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useNutzapWallet } from '@/hooks/useNutzapWallet';
+import { useActiveRelayUrls } from '@/hooks/useActiveRelayUrls';
 import { useToast } from '@/hooks/useToast';
 import { Wallet } from '@cashu/cashu-ts';
 import { parseNutzapConfig, buildNutzapTags, NUTZAP_EVENT_KIND } from '@/lib/nutzap';
+import { parseReadRelaysFromNip65, mergeAndDeduplicateRelays } from '@/lib/relays';
 
 export interface NutzapRequest {
   recipientPubkey: string;
   amount: number;
   comment?: string;
-  eventId?: string;
-  eventKind?: number;
-  /** When sending from a specific mint card, prefer this mint (recipient must accept it). */
-  preferredMintUrl?: string;
+  eventId: string;
+  eventKind: number;
+  mintUrl: string;
 }
 
 export interface NutzapResult {
@@ -29,6 +30,7 @@ export function useNutzap() {
   const { mutateAsync: createEvent } = useNostrPublish();
   const { toast } = useToast();
   const { tokens, mints, refetch } = useNutzapWallet();
+  const activeRelayUrls = useActiveRelayUrls();
   const [isSending, setIsSending] = useState(false);
 
   const sendNutzap = async (
@@ -46,16 +48,17 @@ export function useNutzap() {
         description: 'Fetching recipient configuration',
       });
 
-      const configEvents = await nostr.query(
-        [
-          {
-            kinds: [10019],
-            authors: [request.recipientPubkey],
-            limit: 1,
-          },
-        ],
-        { signal: AbortSignal.timeout(5000) }
-      );
+      const signal = AbortSignal.timeout(5000);
+      const [configEvents, nip65Events] = await Promise.all([
+        nostr.query(
+          [{ kinds: [10019], authors: [request.recipientPubkey], limit: 1 }],
+          { signal }
+        ),
+        nostr.query(
+          [{ kinds: [10002], authors: [request.recipientPubkey], limit: 1 }],
+          { signal }
+        ),
+      ]);
 
       if (configEvents.length === 0) {
         throw new Error(
@@ -71,14 +74,14 @@ export function useNutzap() {
       const candidateMints = config.mints.filter(
         (m) => mints.includes(m.url) && m.units.includes('sat')
       );
-      const commonMint = request.preferredMintUrl &&
-        candidateMints.some((m) => m.url === request.preferredMintUrl)
-        ? candidateMints.find((m) => m.url === request.preferredMintUrl)
-        : candidateMints[0];
 
+      const commonMint = candidateMints.find(
+        (m) => m.url === request.mintUrl
+      );
+      
       if (!commonMint) {
         throw new Error(
-          `No common mint found. Recipient accepts: ${config.mints.map((m) => m.url).join(', ')}`
+          `Recipient does not accept mint ${request.mintUrl}. Recipient accepts: ${config.mints.map((m) => m.url).join(', ')}`
         );
       }
 
@@ -120,13 +123,21 @@ export function useNutzap() {
         send,
         'sat',
         request.eventId,
-        request.eventKind
+        request.eventKind.toString()
       );
+
+      const configRelays = config.relays ?? [];
+      const nip65ReadRelays =
+        nip65Events.length > 0 ? parseReadRelaysFromNip65(nip65Events[0]) : [];
+      const targetRelays = mergeAndDeduplicateRelays(configRelays, nip65ReadRelays);
+      const relaysToPublish =
+        targetRelays.length > 0 ? targetRelays : activeRelayUrls;
 
       const event = await createEvent({
         kind: NUTZAP_EVENT_KIND,
         content: request.comment ?? '',
         tags,
+        relays: relaysToPublish,
       });
 
       toast({
