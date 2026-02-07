@@ -12,18 +12,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { useReceiveCashuToken } from '@/hooks/useReceiveCashuToken';
 import { ArrowDownLeft, Loader2 } from 'lucide-react';
 
-interface NutzapReceiveTokenDialogProps {
+interface CashuReceiveTokenDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mintUrl?: string;
   mintName?: string;
 }
 
-export function NutzapReceiveTokenDialog({
+export function CashuReceiveTokenDialog({
   open,
   onOpenChange,
   mintName,
-}: NutzapReceiveTokenDialogProps) {
+}: CashuReceiveTokenDialogProps) {
   const [tokenInput, setTokenInput] = useState('');
   const receive = useReceiveCashuToken();
 
@@ -43,11 +43,10 @@ export function NutzapReceiveTokenDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ArrowDownLeft className="h-5 w-5" />
-            Receive token
+            Receive token from {mintName}
           </DialogTitle>
           <DialogDescription>
-            Paste a Cashu token from another wallet or mint to add it to this
-            wallet. {mintName && `Any mint is accepted; this card is for ${mintName}.`}
+            Paste a Cashu token from another wallet of {mintName} to add it to this wallet.
           </DialogDescription>
         </DialogHeader>
 

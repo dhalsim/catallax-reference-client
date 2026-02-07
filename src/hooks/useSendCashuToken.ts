@@ -4,7 +4,10 @@ import { useToast } from '@/hooks/useToast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Wallet, getEncodedTokenV4 } from '@cashu/cashu-ts';
 import type { Proof } from '@cashu/cashu-ts';
-import { NUTZAP_TOKEN_KIND } from '@/lib/nutzap';
+import {
+  NUTZAP_TOKEN_KIND,
+  NUTZAP_REDEMPTION_KIND,
+} from '@/lib/nutzap';
 
 /** NIP-09 delete event kind. */
 const DELETE_KIND = 5;
@@ -18,6 +21,8 @@ export interface SendCashuTokenResult {
   mintUrl: string;
   /** Unit (e.g. sat). */
   unit: string;
+  /** Kind 7376 history event id (for linking to pending token). */
+  historyEventId: string;
 }
 
 /**
@@ -80,24 +85,59 @@ export function useSendCashuToken() {
         });
       }
 
+      let createdTokenEventId: string | null = null;
+      
       if (keep.length > 0) {
         const tokenContent = JSON.stringify({
           mint: mintUrl,
           proofs: keep,
           unit,
         });
+        
         const encrypted = await user.signer.nip44.encrypt(
           user.pubkey,
           tokenContent
         );
-        await createEvent({
+        
+        const newTokenEvent = await createEvent({
           kind: NUTZAP_TOKEN_KIND,
           content: encrypted,
           tags: [],
         });
+        
+        createdTokenEventId = newTokenEvent.id;
       }
 
       const sentAmount = send.reduce((s, p) => s + p.amount, 0);
+
+      const historyContent = JSON.stringify([
+        ['direction', 'out'],
+        ['amount', sentAmount.toString()],
+        ['unit', unit],
+      ]);
+      
+      const encryptedHistory = await user.signer.nip44.encrypt(
+        user.pubkey,
+        historyContent
+      );
+      
+      const historyTags: string[][] = eventIdsToReplace.map((id) => [
+        'e',
+        id,
+        '',
+        'destroyed',
+      ]);
+      
+      if (createdTokenEventId) {
+        historyTags.push(['e', createdTokenEventId, '', 'created']);
+      }
+      
+      const historyEvent = await createEvent({
+        kind: NUTZAP_REDEMPTION_KIND,
+        content: encryptedHistory,
+        tags: historyTags,
+      });
+
       toast({
         title: 'Token created',
         description: `Copy the token to use ${sentAmount} ${unit} in another wallet`,
@@ -108,11 +148,13 @@ export function useSendCashuToken() {
         amount: sentAmount,
         mintUrl,
         unit,
+        historyEventId: historyEvent.id,
       };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutzap-tokens'] });
       queryClient.invalidateQueries({ queryKey: ['nutzap-wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['nutzap-mint-history'] });
     },
     onError: (error) => {
       toast({

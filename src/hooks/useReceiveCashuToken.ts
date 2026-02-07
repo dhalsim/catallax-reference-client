@@ -4,7 +4,11 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useToast } from '@/hooks/useToast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Wallet, getDecodedToken } from '@cashu/cashu-ts';
-import { NUTZAP_WALLET_KIND, NUTZAP_TOKEN_KIND } from '@/lib/nutzap';
+import {
+  NUTZAP_WALLET_KIND,
+  NUTZAP_TOKEN_KIND,
+  NUTZAP_REDEMPTION_KIND,
+} from '@/lib/nutzap';
 
 /**
  * Receive a Cashu token (encoded string from getEncodedTokenV4) into the
@@ -43,6 +47,16 @@ export function useReceiveCashuToken() {
 
       const mintUrl = decoded.mint;
       const unit = decoded.unit ?? 'sat';
+
+      if (unit !== 'sat') {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid unit',
+          description: 'This client only accepts tokens in sats.',
+        });
+
+        throw new Error(`Invalid unit: ${unit}`);
+      }
 
       toast({
         title: 'Receiving token...',
@@ -88,13 +102,30 @@ export function useReceiveCashuToken() {
         tokenContent
       );
 
-      await createEvent({
+      const newTokenEvent = await createEvent({
         kind: NUTZAP_TOKEN_KIND,
         content: encryptedTokenContent,
         tags: [],
       });
 
       const total = newProofs.reduce((s, p) => s + p.amount, 0);
+
+      const historyContent = JSON.stringify([
+        ['direction', 'in'],
+        ['amount', total.toString()],
+        ['unit', unit],
+      ]);
+      
+      const encryptedHistory = await user.signer.nip44.encrypt(
+        user.pubkey,
+        historyContent
+      );
+      
+      await createEvent({
+        kind: NUTZAP_REDEMPTION_KIND,
+        content: encryptedHistory,
+        tags: [['e', newTokenEvent.id, '', 'created']],
+      });
       
       toast({
         title: 'Token received',
@@ -106,6 +137,7 @@ export function useReceiveCashuToken() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutzap-tokens'] });
       queryClient.invalidateQueries({ queryKey: ['nutzap-wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['nutzap-mint-history'] });
     },
     onError: (error) => {
       toast({

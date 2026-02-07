@@ -1,8 +1,4 @@
 import { useState } from 'react';
-import { useNutzap } from '@/hooks/useNutzap';
-import { useCanReceiveNutzaps } from '@/hooks/useNutzapConfig';
-import { useNutzapWallet } from '@/hooks/useNutzapWallet';
-import { useAuthor } from '@/hooks/useAuthor';
 import {
   Dialog,
   DialogContent,
@@ -11,92 +7,122 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Wallet, AlertTriangle } from 'lucide-react';
+import { useNutzap } from '@/hooks/useNutzap';
+import { useCanReceiveNutzaps } from '@/hooks/useNutzapConfig';
+import { useNutzapWallet } from '@/hooks/useNutzapWallet';
+import { useAuthor } from '@/hooks/useAuthor';
 import { formatSats } from '@/lib/catallax';
 import { genUserName } from '@/lib/genUserName';
+import { Loader2, Wallet, AlertTriangle } from 'lucide-react';
 
-export interface NutzapDialogProps {
+function getMintHostname(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+export interface NutzapSendDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   recipientPubkey: string;
-  amount?: number;
-  purpose?: string;
-  eventId?: string;
-  eventKind?: number;
+  amount: number;
+  purpose: string;
   onComplete: (nutzapEventId: string) => void;
+  eventId: string;
+  eventKind: number;
 }
 
-export function NutzapDialog({
+export function NutzapSendDialog({
   open,
   onOpenChange,
   recipientPubkey,
   amount: defaultAmount,
   purpose,
+  onComplete,
   eventId,
   eventKind,
-  onComplete,
-}: NutzapDialogProps) {
+}: NutzapSendDialogProps) {
   const { sendNutzap, isSending } = useNutzap();
   const { canReceive, config, isLoading: configLoading } =
     useCanReceiveNutzaps(recipientPubkey);
-  const { balances, hasWallet } = useNutzapWallet();
+  const { balances, hasWallet, mints: walletMints } = useNutzapWallet();
   const author = useAuthor(recipientPubkey);
 
-  const [amount, setAmount] = useState(defaultAmount?.toString() ?? '');
-  const [comment, setComment] = useState('');
+  const recipientMintUrls = new Set(
+    config?.mints.map((m) => m.url) ?? []
+  );
+  const allUserMints = Array.from(
+    new Set([...walletMints, ...balances.keys()])
+  ).filter((url) => (balances.get(url) ?? 0) > 0);
+  const selectableMints = allUserMints.filter(
+    (url) => recipientMintUrls.has(url) && (balances.get(url) ?? 0) > 0
+  );
+
+  const [selectedMintUrl, setSelectedMintUrl] = useState<string>('');
+
+  const selectedBalance = selectedMintUrl
+    ? balances.get(selectedMintUrl) ?? 0
+    : 0;
 
   const metadata = author.data?.metadata;
   const displayName = metadata?.name ?? genUserName(recipientPubkey);
 
-  const availableBalance =
-    config?.mints.reduce((max, mint) => {
-      const balance = balances.get(mint.url) ?? 0;
-      return Math.max(max, balance);
-    }, 0) ?? 0;
-
-  const amountNum = parseInt(amount, 10);
   const showInsufficientAlert =
     hasWallet &&
     canReceive &&
-    !Number.isNaN(amountNum) &&
-    amountNum > 0 &&
-    amountNum > availableBalance;
+    !!selectedMintUrl &&
+    defaultAmount > selectedBalance;
 
   const handleSend = async () => {
-    const amountNum = parseInt(amount, 10);
-    if (Number.isNaN(amountNum) || amountNum <= 0) return;
+    if (!selectedMintUrl) return;
+
+    if (defaultAmount > selectedBalance) return;
 
     try {
       const result = await sendNutzap({
         recipientPubkey,
-        amount: amountNum,
-        comment: comment || undefined,
+        amount: defaultAmount,
+        preferredMintUrl: selectedMintUrl,
         eventId,
         eventKind,
       });
-
       onComplete(result.nutzapEventId);
       onOpenChange(false);
+      setSelectedMintUrl('');
     } catch {
       // Error handled in hook
     }
   };
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
+      setSelectedMintUrl('');
+    }
+    onOpenChange(next);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Wallet className="h-5 w-5" />
-            Send Nutzap
+            <span className="text-xl" aria-hidden>🥜</span>
+            Cashu Payment to Arbiter
           </DialogTitle>
           <DialogDescription>
-            Send Cashu ecash via Nostr
+            {purpose}
           </DialogDescription>
         </DialogHeader>
 
@@ -142,35 +168,59 @@ export function NutzapDialog({
             </Alert>
           )}
 
-          {canReceive && availableBalance === 0 && (
+          {canReceive && selectableMints.length === 0 && allUserMints.length > 0 && (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 You have no Cashu balance at mints this user trusts. Add funds
-                at one of: {config?.mints.map((m) => new URL(m.url).hostname).join(', ')}
+                at one of:{' '}
+                {config?.mints.map((m) => new URL(m.url).hostname).join(', ')}
               </AlertDescription>
             </Alert>
           )}
 
-          {purpose && (
-            <p className="text-sm text-muted-foreground">
-              <strong>Purpose:</strong> {purpose}
-            </p>
+          {canReceive && hasWallet && (
+            <div className="space-y-2">
+              <Label>Mint</Label>
+              <Select
+                value={selectedMintUrl}
+                onValueChange={setSelectedMintUrl}
+                disabled={selectableMints.length === 0 || isSending}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a mint to send from" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allUserMints.map((url) => {
+                    const balance = balances.get(url) ?? 0;
+                    const isSelectable = selectableMints.includes(url);
+                    const suffix = !recipientMintUrls.has(url)
+                      ? ' — recipient does not accept'
+                      : '';
+                    const label = `${getMintHostname(url)} (${formatSats(balance)})${suffix}`;
+                    return (
+                      <SelectItem
+                        key={url}
+                        value={url}
+                        disabled={!isSelectable}
+                      >
+                        {label}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="nutzap-amount">Amount (sats)</Label>
-            <Input
-              id="nutzap-amount"
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="1000"
-              disabled={!(canReceive && hasWallet)}
-            />
-            {availableBalance > 0 && (
+            <Label>Amount (sats)</Label>
+            <p className="text-sm font-medium">
+              {formatSats(defaultAmount)}
+            </p>
+            {selectedMintUrl && selectedBalance > 0 && (
               <p className="text-xs text-muted-foreground">
-                Available: {formatSats(availableBalance)}
+                Available: {formatSats(selectedBalance)}
               </p>
             )}
             {showInsufficientAlert && (
@@ -178,34 +228,21 @@ export function NutzapDialog({
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
                   Insufficient balance. You have{' '}
-                  {formatSats(availableBalance)} available; you are trying to
-                  send {formatSats(amountNum)}.
+                  {formatSats(selectedBalance)} available; you need to send{' '}
+                  {formatSats(defaultAmount)}.
                 </AlertDescription>
               </Alert>
             )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="nutzap-comment">Comment (optional)</Label>
-            <Textarea
-              id="nutzap-comment"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="Thanks!"
-              rows={2}
-              disabled={!(canReceive && hasWallet)}
-            />
           </div>
 
           <Button
             onClick={handleSend}
             disabled={
               isSending ||
-              !amount ||
-              parseInt(amount, 10) <= 0 ||
-              (!canReceive ||
-                !hasWallet ||
-                parseInt(amount, 10) > availableBalance)
+              !selectedMintUrl ||
+              !canReceive ||
+              !hasWallet ||
+              defaultAmount > selectedBalance
             }
             className="w-full"
           >
@@ -217,7 +254,7 @@ export function NutzapDialog({
             ) : (
               <>
                 <Wallet className="mr-2 h-4 w-4" />
-                Send {amount ? formatSats(parseInt(amount, 10)) : 'Nutzap'}
+                Send {formatSats(defaultAmount)}
               </>
             )}
           </Button>

@@ -20,7 +20,7 @@ import { CATALLAX_KINDS, formatSats, getStatusColor, calculatePaymentSplit, calc
 import { TaskConclusionForm } from './TaskConclusionForm';
 import { LightningPaymentDialog } from './LightningPaymentDialog';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
-import { NutzapDialog } from '@/components/NutzapDialog';
+import { NutzapSendDialog } from '@/components/NutzapSendDialog';
 import { useCanReceiveNutzaps } from '@/hooks/useNutzapConfig';
 import { LightningSplitPaymentDialog } from './LightningSplitPaymentDialog';
 import { GoalProgressBar } from './GoalProgressBar';
@@ -1249,7 +1249,7 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
       )}
 
       {task.arbiterPubkey && (
-        <NutzapDialog
+        <NutzapSendDialog
           open={showNutzapFundDialog}
           onOpenChange={setShowNutzapFundDialog}
           recipientPubkey={task.arbiterPubkey}
@@ -1259,6 +1259,8 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
             handleFundEscrow(nutzapEventId);
             setShowNutzapFundDialog(false);
           }}
+          eventId={task.id}
+          eventKind={CATALLAX_KINDS.TASK_PROPOSAL}
         />
       )}
 
@@ -1280,7 +1282,7 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
       )}
 
       {task.workerPubkey && (
-        <NutzapDialog
+        <NutzapSendDialog
           open={showNutzapPayoutDialog}
           onOpenChange={setShowNutzapPayoutDialog}
           recipientPubkey={task.workerPubkey}
@@ -1290,6 +1292,8 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
             handlePayWorker(nutzapEventId);
             setShowNutzapPayoutDialog(false);
           }}
+          eventId={task.id}
+          eventKind={CATALLAX_KINDS.TASK_PROPOSAL}
         />
       )}
 
@@ -1308,7 +1312,7 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
         }}
       />
 
-      <NutzapDialog
+      <NutzapSendDialog
         open={showNutzapRefundDialog}
         onOpenChange={setShowNutzapRefundDialog}
         recipientPubkey={task.patronPubkey}
@@ -1318,6 +1322,8 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
           handleRefundPatron(nutzapEventId);
           setShowNutzapRefundDialog(false);
         }}
+        eventId={task.id}
+        eventKind={CATALLAX_KINDS.TASK_PROPOSAL}
       />
     </Card>
   );

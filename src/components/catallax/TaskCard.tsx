@@ -15,7 +15,7 @@ import { formatSats, getStatusColor, type TaskProposal, CATALLAX_KINDS } from '@
 import { LightningPaymentDialog } from './LightningPaymentDialog';
 import { GoalProgressBar } from './GoalProgressBar';
 import { CrowdfundButton } from './CrowdfundButton';
-import { NutzapDialog } from '@/components/NutzapDialog';
+import { NutzapSendDialog } from '@/components/NutzapSendDialog';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { CopyNpubButton } from '@/components/CopyNpubButton';
 import { format } from 'date-fns';
@@ -282,7 +282,7 @@ export function TaskCard({ task, onApply, onManage, onFund, showApplyButton, sho
         )}
 
         {task.arbiterPubkey && (
-          <NutzapDialog
+          <NutzapSendDialog
             open={showNutzapFundDialog}
             onOpenChange={setShowNutzapFundDialog}
             recipientPubkey={task.arbiterPubkey}
@@ -292,6 +292,8 @@ export function TaskCard({ task, onApply, onManage, onFund, showApplyButton, sho
               onFund?.(task, nutzapEventId);
               setShowNutzapFundDialog(false);
             }}
+            eventId={task.id}
+            eventKind={CATALLAX_KINDS.TASK_PROPOSAL}
           />
         )}
 

@@ -72,13 +72,3 @@ Until one of these is implemented, users have no way in the UI to see or redeem 
 
 2. **Query nutzaps by referenced event.**  
    Add or confirm support for querying “payments for a specific event”: filter kind 9321 by `#e` (the event id that was nutzapped), e.g. `{ kinds: [9321], "#e": [eventId] }`. This allows listing “nutzaps received (or sent) for this task/note” and reusing the same pattern as zap receipts (e.g. `useZapGoal` uses `#e` for goal id). Implement a small hook or query helper (e.g. “nutzaps for event X”) if missing, and use it where the UI should show nutzap payments for a single event.
-
----
-
-## 5. Restore wallet from mnemonic (cashu-ts)
-
-**Ref:** `@cashu/cashu-ts` (used in `src/lib/cashu.ts`, wallet hooks).
-
-**Todo:**
-
-- **Explore** whether and how the **cashu-ts** library supports restoring a Cashu/Nutzap wallet from a **mnemonic** (BIP-39 or similar). If supported, document the flow and consider adding a “Restore wallet” path in the client (e.g. in NutzapWalletSetup or wallet settings) so users can recover their P2PK key and mints from a backup phrase. If cashu-ts does not support mnemonic restore, note alternatives (e.g. export/import encrypted backup, or link to upstream feature requests).

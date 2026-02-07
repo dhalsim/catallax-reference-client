@@ -11,11 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useSendCashuToken } from '@/hooks/useSendCashuToken';
 import { useNutzapWallet } from '@/hooks/useNutzapWallet';
+import { usePendingTokens } from '@/hooks/usePendingTokens';
 import { useToast } from '@/hooks/useToast';
 import { formatSats } from '@/lib/catallax';
 import { Copy, Loader2, Wallet } from 'lucide-react';
 
-interface NutzapSendTokenDialogProps {
+interface CashuSendTokenDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mintUrl: string;
@@ -23,16 +24,17 @@ interface NutzapSendTokenDialogProps {
   balance: number;
 }
 
-export function NutzapSendTokenDialog({
+export function CashuSendTokenDialog({
   open,
   onOpenChange,
   mintUrl,
   mintName,
   balance,
-}: NutzapSendTokenDialogProps) {
+}: CashuSendTokenDialogProps) {
   const [amount, setAmount] = useState('');
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const { tokens } = useNutzapWallet();
+  const { addPending } = usePendingTokens();
   const sendToken = useSendCashuToken();
   const { toast } = useToast();
 
@@ -58,7 +60,16 @@ export function NutzapSendTokenDialog({
         tokensForMint,
         unit: 'sat',
       });
+
       setCreatedToken(result.encodedToken);
+
+      addPending({
+        encodedToken: result.encodedToken,
+        amount: result.amount,
+        unit: result.unit,
+        mintUrl: result.mintUrl,
+        historyEventId: result.historyEventId,
+      });
     } catch {
       // Error handled in hook
     }
@@ -113,7 +124,7 @@ export function NutzapSendTokenDialog({
               </Button>
               <Button onClick={() => handleClose(false)}>Done</Button>
             </div>
-            <pre className="max-h-32 overflow-auto rounded bg-muted p-2 text-xs break-all font-mono">
+            <pre className="max-h-32 w-full min-w-0 overflow-auto rounded bg-muted p-2 text-xs font-mono break-all whitespace-pre-wrap">
               {createdToken}
             </pre>
           </div>

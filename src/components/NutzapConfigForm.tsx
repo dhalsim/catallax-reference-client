@@ -17,103 +17,140 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatSats } from '@/lib/catallax';
-import { Plus, Trash2, Wallet, ArrowUpRight, ArrowDownLeft, Copy } from 'lucide-react';
-import { NutzapSendFromMintDialog } from '@/components/NutzapSendFromMintDialog';
-import { NutzapReceiveTokenDialog } from '@/components/NutzapReceiveTokenDialog';
-import { NutzapSendTokenDialog } from '@/components/NutzapSendTokenDialog';
+import { Wallet, ArrowUpRight, ArrowDownLeft, History, Plus, Trash2 } from 'lucide-react';
+import { CashuReceiveTokenDialog } from '@/components/CashuReceiveTokenDialog';
+import { CashuSendTokenDialog } from '@/components/CashuSendTokenDialog';
+import { NutzapMintHistoryDialog } from '@/components/NutzapMintHistoryDialog';
+import { usePendingTokens } from '@/hooks/usePendingTokens';
+import { useAppContext } from '@/hooks/useAppContext';
 
-const DEFAULT_RELAYS = ['wss://relay.nostr.band'];
-const DEFAULT_MINTS = [
-  'https://mint.minibits.cash/Bitcoin',
-  'https://mint.coinos.io',
-  'https://stablenut.umint.cash'
-];
+function normalizeMintUrl(input: string): string {
+  const trimmed = input.trim();
+  
+  if (!trimmed) return trimmed;
+  
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  
+  return `https://${trimmed}`;
+}
+
+function isValidMintUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' || u.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
 
 export function NutzapConfigForm() {
   const { user } = useCurrentUser();
+  const { config: appConfig, presetRelays = [] } = useAppContext();
   const { data: config } = useNutzapConfig(user?.pubkey);
   const { mutateAsync: createEvent, isPending } = useNostrPublish();
   const { mutateAsync: updateWalletMints, isPending: isUpdatingMints } =
     useUpdateNutzapWalletMints();
-  const { p2pkPubkey, hasWallet, balances } = useNutzapWallet();
+  const { p2pkPubkey, hasWallet, balances, mints: walletMints } = useNutzapWallet();
+  const { getPendingForMint } = usePendingTokens();
   const { toast } = useToast();
-
-  const seededFromConfig = useRef(false);
+  const seededRef = useRef(false);
 
   const getMintBalance = (mintUrl: string) => balances.get(mintUrl) ?? 0;
 
-  const [relays, setRelays] = useState<string[]>(DEFAULT_RELAYS);
-  const [mints, setMints] = useState<string[]>([DEFAULT_MINTS[0]]);
-  const [newRelay, setNewRelay] = useState('');
-  const [newMint, setNewMint] = useState('');
-  const [sendMintUrl, setSendMintUrl] = useState<string | null>(null);
+  const [mints, setMints] = useState<string[]>([]);
+  const [newMintInput, setNewMintInput] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [receiveMintUrl, setReceiveMintUrl] = useState<string | null>(null);
   const [sendTokenMintUrl, setSendTokenMintUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (config && !seededFromConfig.current) {
-      setRelays(config.relays.length > 0 ? config.relays : DEFAULT_RELAYS);
-      setMints(
-        config.mints.length > 0
-          ? config.mints.map((m) => m.url)
-          : [DEFAULT_MINTS[0]]
-      );
-      seededFromConfig.current = true;
+    const source = walletMints.length > 0 
+      ? walletMints 
+      : (config?.mints.map((m) => m.url) ?? []);
+    
+    if (source.length > 0 && !seededRef.current) {
+      setMints(source);
+      seededRef.current = true;
     }
-  }, [config]);
+  }, [walletMints, config?.mints]);
 
-  const handleAddRelay = () => {
-    if (newRelay && !relays.includes(newRelay)) {
-      setRelays([...relays, newRelay]);
-      setNewRelay('');
+  function getActiveRelayUrls(): string[] {
+    if (appConfig.relayMode === 'custom' && appConfig.customRelay) {
+      return [appConfig.customRelay];
     }
-  };
+    
+    if (appConfig.relayMode === 'user' && appConfig.userRelays?.length) {
+      return appConfig.userRelays;
+    }
+    
+    const urls = presetRelays.map((r) => r.url);
+    
+    return urls.length > 0 ? urls : ['wss://relay.nostr.band'];
+  }
 
   const handleAddMint = () => {
-    if (newMint && !mints.includes(newMint)) {
-      setMints([...mints, newMint]);
-      setNewMint('');
+    const url = normalizeMintUrl(newMintInput);
+    
+    if (!url) return;
+    
+    if (!isValidMintUrl(url)) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid URL',
+        description: 'Enter a valid mint URL (e.g. https://mint.example)',
+      });
+      
+      return;
     }
+    
+    if (mints.includes(url)) {
+      toast({ title: 'Already added', description: 'This mint is already in the list.' });
+      
+      return;
+    }
+    
+    setMints([...mints, url]);
+    setNewMintInput('');
+  };
+
+  const handleRemoveMint = (url: string) => {
+    setMints(mints.filter((m) => m !== url));
   };
 
   const handleSubmit = async () => {
     if (!user || !p2pkPubkey) return;
 
-    if (relays.length === 0) {
-      toast({
-        title: 'Error',
-        description: 'Add at least one relay',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     if (mints.length === 0) {
       toast({
-        title: 'Error',
-        description: 'Add at least one mint',
         variant: 'destructive',
+        title: 'Add at least one mint',
+        description: 'Add a mint URL before publishing configuration.',
       });
+      
       return;
     }
 
+    const relayUrls = getActiveRelayUrls();
+    
     const tags: string[][] = [];
 
-    for (const relay of relays) {
+    for (const relay of relayUrls) {
       tags.push(['relay', relay]);
     }
-
+    
     for (const mint of mints) {
       tags.push(['mint', mint, 'sat']);
     }
-
+    
     tags.push(['pubkey', p2pkPubkey]);
 
     try {
       if (hasWallet) {
         await updateWalletMints({
           newMints: mints,
-          mergeWithExisting: true,
+          mergeWithExisting: false,
         });
       }
 
@@ -166,148 +203,119 @@ export function NutzapConfigForm() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div>
-          <Label>Your P2PK public key</Label>
-          <code className="mt-1 block break-all rounded bg-muted p-2 text-xs">
-            {p2pkPubkey}
-          </code>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Tokens will be locked to this key. Only you can redeem them.
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <Label>Your P2PK public key</Label>
+            <code className="mt-1 block break-all rounded bg-muted p-2 text-xs">
+              {p2pkPubkey}
+            </code>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Tokens will be locked to this key. Only you can redeem them.
+            </p>
+          </div>
         </div>
 
-        <div className="space-y-2">
-          <Label>Relays (where you receive nutzaps)</Label>
-          <div className="flex flex-wrap gap-2">
-            {relays.map((relay) => (
-              <Badge
-                key={relay}
-                variant="secondary"
-                className="flex items-center gap-1"
-              >
-                {relay}
-                <button
-                  type="button"
-                  onClick={() => setRelays(relays.filter((r) => r !== relay))}
-                  aria-label={`Remove ${relay}`}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={newRelay}
-              onChange={(e) => setNewRelay(e.target.value)}
-              placeholder="wss://relay.example"
-            />
-            <Button onClick={handleAddRelay} size="icon" variant="outline">
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setHistoryOpen(true)}
+            className="shrink-0"
+          >
+            <History className="h-4 w-4 mr-1" />
+            History
+          </Button>
         </div>
 
         <div className="space-y-3">
           <Label>Mints</Label>
           <p className="text-xs text-muted-foreground">
-            Per mint: receive tokens (paste from other wallets), create tokens to
-            send elsewhere, or send nutzaps via Nostr.
+            Add mints to receive and send Cashu tokens. Receive, create tokens to send elsewhere.
           </p>
-          <div className="space-y-3">
-            {mints.map((mintUrl) => {
-              const mintName = new URL(mintUrl).hostname;
-              const balance = getMintBalance(mintUrl);
-              return (
-                <Card key={mintUrl}>
-                  <CardContent className="pt-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium truncate">{mintName}</p>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <span aria-hidden>≐</span>
-                          {formatSats(balance)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSendMintUrl(mintUrl)}
-                          disabled={balance <= 0}
-                        >
-                          <ArrowUpRight className="h-4 w-4 mr-1" />
-                          Nutzap
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSendTokenMintUrl(mintUrl)}
-                          disabled={balance <= 0}
-                        >
-                          <Copy className="h-4 w-4 mr-1" />
-                          Token
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setReceiveMintUrl(mintUrl)}
-                        >
-                          <ArrowDownLeft className="h-4 w-4 mr-1" />
-                          Receive
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setMints(mints.filter((m) => m !== mintUrl))}
-                          aria-label={`Remove ${mintName}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          
           <div className="flex gap-2">
             <Input
-              value={newMint}
-              onChange={(e) => setNewMint(e.target.value)}
+              value={newMintInput}
+              onChange={(e) => setNewMintInput(e.target.value)}
               placeholder="https://mint.example"
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddMint())}
             />
-            <Button onClick={handleAddMint} size="icon" variant="outline">
+            <Button type="button" variant="outline" size="icon" onClick={handleAddMint}>
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex flex-wrap gap-1">
-            {DEFAULT_MINTS.filter((m) => !mints.includes(m)).map((mint) => (
-              <Button
-                key={mint}
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setMints([...mints, mint])}
-              >
-                + {new URL(mint).hostname}
-              </Button>
-            ))}
-          </div>
+          {mints.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">
+              No mints added yet. Add a mint URL above.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {mints.map((mintUrl) => {
+                const pendingCount = getPendingForMint(mintUrl).length;
+                let hostname: string;
+                try {
+                  hostname = new URL(mintUrl).hostname;
+                } catch {
+                  hostname = mintUrl;
+                }
+                return (
+                  <li key={mintUrl}>
+                    <Card>
+                      <CardContent className="pt-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium truncate">{hostname}</p>
+                            <p className="text-sm text-muted-foreground flex items-center gap-1">
+                              <span aria-hidden>≐</span>
+                              {formatSats(getMintBalance(mintUrl))}
+                              {pendingCount > 0 && (
+                                <Badge variant="secondary" className="ml-1">
+                                  {pendingCount} pending
+                                </Badge>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSendTokenMintUrl(mintUrl)}
+                              disabled={getMintBalance(mintUrl) <= 0}
+                            >
+                              <ArrowUpRight className="h-4 w-4 mr-1" />
+                              Send
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setReceiveMintUrl(mintUrl)}
+                            >
+                              <ArrowDownLeft className="h-4 w-4 mr-1" />
+                              Receive
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveMint(mintUrl)}
+                              aria-label={`Remove ${hostname}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
-        {sendMintUrl && (
-          <NutzapSendFromMintDialog
-            open={!!sendMintUrl}
-            onOpenChange={(open) => !open && setSendMintUrl(null)}
-            mintUrl={sendMintUrl}
-            mintName={new URL(sendMintUrl).hostname}
-            balance={getMintBalance(sendMintUrl)}
-          />
-        )}
-
         {receiveMintUrl && (
-          <NutzapReceiveTokenDialog
+          <CashuReceiveTokenDialog
             open={!!receiveMintUrl}
             onOpenChange={(open) => !open && setReceiveMintUrl(null)}
             mintUrl={receiveMintUrl}
@@ -316,7 +324,7 @@ export function NutzapConfigForm() {
         )}
 
         {sendTokenMintUrl && (
-          <NutzapSendTokenDialog
+          <CashuSendTokenDialog
             open={!!sendTokenMintUrl}
             onOpenChange={(open) => !open && setSendTokenMintUrl(null)}
             mintUrl={sendTokenMintUrl}
@@ -325,9 +333,14 @@ export function NutzapConfigForm() {
           />
         )}
 
+        <NutzapMintHistoryDialog
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+        />
+
         <Button
           onClick={handleSubmit}
-          disabled={isPending || isUpdatingMints}
+          disabled={isPending || isUpdatingMints || mints.length === 0}
           className="w-full"
         >
           {isPending || isUpdatingMints

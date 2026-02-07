@@ -14,15 +14,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-
-const DEFAULT_MINTS = [
-  'https://mint.minibits.cash/Bitcoin',
-  'https://mint.coinos.io',
-];
-
 export function NutzapWalletSetup() {
   const { user } = useCurrentUser();
-  const { data: config, isLoading: configLoading } = useNutzapConfig(user?.pubkey);
+  const { isLoading: configLoading } = useNutzapConfig(user?.pubkey);
   const { hasWallet, isLoading: walletLoading } = useNutzapWallet();
   const { mutateAsync: createWallet, isPending } = useCreateNutzapWallet();
 
@@ -32,10 +26,9 @@ export function NutzapWalletSetup() {
 
   const handleCreate = async () => {
     setCreating(true);
+    
     try {
-      const mints = config?.mints?.map((m) => m.url) ?? DEFAULT_MINTS;
-      const mintsToUse = mints.length > 0 ? mints : DEFAULT_MINTS;
-      await createWallet(mintsToUse);
+      await createWallet([]);
     } finally {
       setCreating(false);
     }
