@@ -18,66 +18,56 @@ The protocol already defines the payout-receipt `e` tag with a fourth element `<
 - **Where:** `TaskConclusionForm` currently pushes `['e', formData.payoutZapReceiptId]` with no fourth element. The form (or its caller) must know whether the receipt is zap or nutzap and add the appropriate marker. Callers that set `conclusionZapReceiptId` from `NutzapDialog` (e.g. `handlePayWorker(nutzapEventId)`, `handleRefundPatron(nutzapEventId)`) should pass a "receipt type" so the form can emit `["e", id, "", "nutzap"]`; when the receipt comes from Lightning flow, emit `["e", id, "", "zap"]`.
 - **Parsing (optional):** `parseTaskConclusion` in `src/lib/catallax.ts` may be extended to read the fourth element of the payout `e` tag (zap vs nutzap) for display or validation, if desired.
 
-## 3. Nutzap event `e` tag, query by event, and require event
+## 3. Nutzap event `e` tag, query by event, and require event ✅
 
 **Ref:** `docs/nutzaps/NIP-61.md` lines 69–70; `src/hooks/useNutzap.ts`, `src/lib/nutzap.ts`, `buildNutzapTags`.
 
-**Todo:**
+**Done:**
 
-1. **Confirm we add the `e` tag when paying for a specific event.**  
-   Verify all flows that should link a nutzap to an event (task proposal, goal, note) pass `eventId` and `eventKind` so the published kind 9321 event includes `["e", "<nutzapped-event-id>", "<relay-hint>"]` and optionally `["k", "<kind>"]` per NIP-61.
-
-2. **Query nutzaps by referenced event.**  
-   Add or confirm support for querying "payments for a specific event": filter kind 9321 by `#e`, e.g. `{ kinds: [9321], "#e": [eventId] }`. Implement a hook or query helper (e.g. `useNutzapsForEvent`) if missing.
-
-3. **Require `e` tag – no nutzap without event.**  
-   This client should not have a nutzap flow without a task event attached. Make `eventId` and `eventKind` required in `NutzapRequest` and `buildNutzapTags` (if not already). Fail early if not present.
+1. All flows pass `eventId` and `eventKind`; `buildNutzapTags` includes `["e", eventId, relayHint]` and `["k", eventKind]`. Relay hint from target relays.
+2. `useNutzapsForEvent(eventId)` queries kind 9321 by `#e`.
+3. `eventId` and `eventKind` required in `NutzapRequest`; `buildNutzapTags` throws if missing; `sendNutzap` validates early.
 
 ---
 
-## 4. Sender 7375 update when sending (NIP-60)
+## 4. Sender 7375 update when sending (NIP-60) ✅
 
 **Ref:** `NIP.md` "Sending a nutzap" step 5; `docs/nutzaps/NIP-60.md` "Spending token"; `src/hooks/useNutzap.ts`.
 
-**Current state:** `useNutzap` publishes kind 9321 and calls `refetch()`, but does not update the sender's token events. Per NIP-60, when spending proofs, the client MUST delete/roll the old 7375 and create a new one with remaining proofs.
+**Done:**
 
-**Todo:**
-
-- After publishing 9321, **update the sender's 7375**:
-  - Identify which token event(s) held the proofs that were spent.
-  - If the Cashu SDK returns change proofs, create a new 7375 with those proofs and `del: [destroyed-event-id]`.
-  - NIP-09 delete the old token event(s).
-- Optionally create kind 7376 (direction: out) for the sender's spending history.
+- After publishing 9321, `useNutzap` updates the sender's 7375:
+  - NIP-09 deletes the token event(s) that held the spent proofs.
+  - If the Cashu SDK returns change (`keep`), creates a new 7375 with those proofs and `del: [destroyed-event-id]`.
+  - Creates kind 7376 (direction: out) for the sender's spending history.
 
 ---
 
-## 5. DLEQ proof verification
+## 5. DLEQ proof verification ✅
 
-**Ref:** NIP-61 "Verifying a Cashu Zap"; `docs/nutzaps/nuts/12.md`.
+**Ref:** NIP-61 "Verifying a Cashu Zap"; `docs/nutzaps/nuts/12.md`; `docs/nutzaps/DLEQ_VERIFICATION.md`.
 
-**Todo:**
+**Done:**
 
-- Research what is needed for **local DLEQ proof verification** of nutzap tokens before displaying or accepting.
-- `verifyP2PKLock` checks P2PK locking but not DLEQ; the NIP says observer clients SHOULD locally verify DLEQ proofs.
-- Document what we need to do and implement if feasible.
+- Documented requirements in `docs/nutzaps/DLEQ_VERIFICATION.md`.
+- Implemented `verifyProofsDleq(proofs, mintUrl, unit)` in `src/lib/cashu.ts` using cashu-ts `hasValidDleq`.
+- Integrated DLEQ verification into `useIncomingNutzaps`: nutzaps are only marked verified when both P2PK and DLEQ pass.
+- Added `requireDleq: true` to `useRedeemNutzap` so redemption rejects proofs without valid DLEQ.
 
 ---
 
-## 6. Incoming nutzaps and redemption UX
+## 6. Incoming nutzaps and redemption UX ✅
 
 **Ref:** `NIP.md` "Receiving a nutzap", "Sender: pending cleared"; `docs/nutzaps/NIP-61.md` lines 77–78; `src/hooks/useIncomingNutzaps.ts`, `src/hooks/useRedeemNutzap.ts`.
 
-**Current state:**
+**Done:**
 
-- `useIncomingNutzaps` exists and fetches incoming nutzaps; `useRedeemNutzap` handles redemption.
-- Neither is surfaced in the app UI. Users have no way to see or redeem incoming nutzaps.
+- `IncomingNutzapsSection` shows incoming nutzaps with Redeem button; placed in NutzapWalletSetup (Settings tab of Catallax dashboard).
+- Users with a wallet see incoming nutzaps and can redeem them.
 
-**Todo:**
+**Deferred:**
 
-- Surface **receiving and redeeming nutzaps** in the UX (at least at a basic level).
-- Add a screen or section that uses `useIncomingNutzaps` and allows users to see and redeem incoming nutzaps.
-- Suggested placements: NutzapWalletSetup, Catallax dashboard, or a dedicated Nutzap/Wallet page.
-- For senders: when a 7376 is seen, treat the nutzap as no longer pending.
+- For senders: when a 7376 is seen, treat the nutzap as no longer pending (would require a "sent nutzaps" list and 7376 subscription).
 
 ---
 

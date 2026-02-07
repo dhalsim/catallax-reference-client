@@ -65,7 +65,7 @@ export function useRedeemNutzap() {
 
       const newProofs = await wallet.receive(
         { mint: nutzap.mintUrl, proofs: nutzap.proofs },
-        { privkey }
+        { privkey, requireDleq: true }
       );
 
       const tokenContent = JSON.stringify({

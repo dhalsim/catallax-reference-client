@@ -5,6 +5,7 @@ import { useNutzapConfig } from '@/hooks/useNutzapConfig';
 import { useNutzapWallet } from '@/hooks/useNutzapWallet';
 import { useCreateNutzapWallet } from '@/hooks/useCreateNutzapWallet';
 import { NutzapConfigForm } from '@/components/NutzapConfigForm';
+import { IncomingNutzapsSection } from '@/components/IncomingNutzapsSection';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -68,7 +69,10 @@ export function NutzapWalletSetup() {
 
   if (hasWallet) {
     return (
-      <NutzapConfigForm />
+      <div className="space-y-6">
+        <IncomingNutzapsSection />
+        <NutzapConfigForm />
+      </div>
     );
   }
 

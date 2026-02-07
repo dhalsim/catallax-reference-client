@@ -2,6 +2,7 @@
  * Cashu / NIP-61 P2PK proof helpers.
  * Uses @cashu/cashu-ts Proof type for compatibility with mint operations.
  */
+import { Wallet, hasValidDleq } from '@cashu/cashu-ts';
 import type { Proof } from '@cashu/cashu-ts';
 
 /** P2PK secret format: ["P2PK", { nonce, data: pubkeyHex }] */
@@ -45,5 +46,37 @@ export function parseProofTag(proofJson: string): Proof | null {
     return JSON.parse(proofJson) as Proof;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Verify DLEQ proofs (NUT-12) for proofs from a given mint.
+ * Fetches mint keys and validates each proof's DLEQ.
+ * Returns true only if all proofs have valid DLEQ; false if any lacks DLEQ, verification fails, or keys cannot be fetched.
+ */
+export async function verifyProofsDleq(
+  proofs: Proof[],
+  mintUrl: string,
+  unit = 'sat'
+): Promise<boolean> {
+  if (proofs.length === 0) return true;
+
+  try {
+    const wallet = new Wallet(mintUrl, { unit });
+    await wallet.loadMint();
+
+    for (const proof of proofs) {
+      if (!proof.dleq) return false;
+
+      try {
+        const keyset = wallet.getKeyset(proof.id);
+        if (!hasValidDleq(proof, keyset)) return false;
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
   }
 }

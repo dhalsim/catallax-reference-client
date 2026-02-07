@@ -140,10 +140,11 @@ export function buildNutzapTags(
   proofs: Proof[],
   unit: string,
   eventId: string,
-  eventKind: string
+  eventKind: string,
+  relayHint: string
 ): string[][] {
-  if (!eventId || !eventKind) {
-    throw new Error('eventId and eventKind are required');
+  if (!eventId || !eventKind || !relayHint) {
+    throw new Error('eventId, eventKind, and relayHint are required');
   }
 
   const tags: string[][] = [];
@@ -155,7 +156,7 @@ export function buildNutzapTags(
   tags.push(['unit', unit]);
   tags.push(['u', mintUrl]);
   tags.push(['p', recipientPubkey]);
-  tags.push(['e', eventId, '']);
+  tags.push(['e', eventId, relayHint]);
   tags.push(['k', eventKind]);
 
   return tags;

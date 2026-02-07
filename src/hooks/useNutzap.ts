@@ -6,8 +6,17 @@ import { useNutzapWallet } from '@/hooks/useNutzapWallet';
 import { useActiveRelayUrls } from '@/hooks/useActiveRelayUrls';
 import { useToast } from '@/hooks/useToast';
 import { Wallet } from '@cashu/cashu-ts';
-import { parseNutzapConfig, buildNutzapTags, NUTZAP_EVENT_KIND } from '@/lib/nutzap';
+import {
+  parseNutzapConfig,
+  buildNutzapTags,
+  NUTZAP_EVENT_KIND,
+  NUTZAP_TOKEN_KIND,
+  NUTZAP_REDEMPTION_KIND,
+} from '@/lib/nutzap';
 import { parseReadRelaysFromNip65, mergeAndDeduplicateRelays } from '@/lib/relays';
+
+/** NIP-09 delete event kind. */
+const DELETE_KIND = 5;
 
 export interface NutzapRequest {
   recipientPubkey: string;
@@ -36,8 +45,12 @@ export function useNutzap() {
   const sendNutzap = async (
     request: NutzapRequest
   ): Promise<NutzapResult> => {
-    if (!user?.signer) {
-      throw new Error('No signer available');
+    if (!user?.signer?.nip44) {
+      throw new Error('No signer with NIP-44 support');
+    }
+
+    if (!request.eventId || request.eventKind == null) {
+      throw new Error('eventId and eventKind are required');
     }
 
     setIsSending(true);
@@ -107,7 +120,7 @@ export function useNutzap() {
         ? config.p2pkPubkey
         : `02${config.p2pkPubkey}`;
 
-      const { send } = await wallet.ops
+      const { keep, send } = await wallet.ops
         .send(request.amount, allProofs)
         .asP2PK({ pubkey: p2pkPubkey })
         .run();
@@ -117,27 +130,89 @@ export function useNutzap() {
         description: 'Sending payment to recipient',
       });
 
-      const tags = buildNutzapTags(
-        request.recipientPubkey,
-        commonMint.url,
-        send,
-        'sat',
-        request.eventId,
-        request.eventKind.toString()
-      );
-
       const configRelays = config.relays ?? [];
       const nip65ReadRelays =
         nip65Events.length > 0 ? parseReadRelaysFromNip65(nip65Events[0]) : [];
       const targetRelays = mergeAndDeduplicateRelays(configRelays, nip65ReadRelays);
       const relaysToPublish =
         targetRelays.length > 0 ? targetRelays : activeRelayUrls;
+      const relayHint = relaysToPublish[0] ?? '';
+
+      const tags = buildNutzapTags(
+        request.recipientPubkey,
+        commonMint.url,
+        send,
+        'sat',
+        request.eventId,
+        request.eventKind.toString(),
+        relayHint
+      );
 
       const event = await createEvent({
         kind: NUTZAP_EVENT_KIND,
         content: request.comment ?? '',
         tags,
         relays: relaysToPublish,
+      });
+
+      // NIP-60: Update sender's 7375 — delete spent tokens, create new with change
+      const eventIdsToReplace = mintTokens.map((t) => t.eventId);
+
+      if (eventIdsToReplace.length > 0) {
+        const deleteTags: string[][] = eventIdsToReplace.map((id) => ['e', id]);
+        deleteTags.push(['k', String(NUTZAP_TOKEN_KIND)]);
+
+        await createEvent({
+          kind: DELETE_KIND,
+          content: '',
+          tags: deleteTags,
+        });
+      }
+
+      let createdTokenEventId: string | null = null;
+
+      if (keep.length > 0) {
+        const tokenContent = JSON.stringify({
+          mint: commonMint.url,
+          proofs: keep,
+          unit: 'sat',
+          del: eventIdsToReplace,
+        });
+
+        const encryptedTokenContent = await user.signer.nip44!.encrypt(
+          user.pubkey,
+          tokenContent
+        );
+
+        const newTokenEvent = await createEvent({
+          kind: NUTZAP_TOKEN_KIND,
+          content: encryptedTokenContent,
+          tags: [],
+        });
+
+        createdTokenEventId = newTokenEvent.id;
+      }
+
+      // NIP-60: Create 7376 (direction: out) for spending history
+      const historyContent = JSON.stringify([
+        ['direction', 'out'],
+        ['amount', request.amount.toString()],
+        ['unit', 'sat'],
+        ...eventIdsToReplace.map((id) => ['e', id, '', 'destroyed'] as [string, string, string, string]),
+        ...(createdTokenEventId
+          ? ([['e', createdTokenEventId, '', 'created']] as [string, string, string, string][])
+          : []),
+      ]);
+
+      const encryptedHistoryContent = await user.signer.nip44!.encrypt(
+        user.pubkey,
+        historyContent
+      );
+
+      await createEvent({
+        kind: NUTZAP_REDEMPTION_KIND,
+        content: encryptedHistoryContent,
+        tags: [],
       });
 
       toast({

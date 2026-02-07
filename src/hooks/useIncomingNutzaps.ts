@@ -2,6 +2,7 @@ import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNutzapConfig } from '@/hooks/useNutzapConfig';
 import { useQuery } from '@tanstack/react-query';
+import { verifyProofsDleq } from '@/lib/cashu';
 import {
   NUTZAP_EVENT_KIND,
   NUTZAP_REDEMPTION_KIND,
@@ -76,10 +77,25 @@ export function useIncomingNutzaps() {
         if (!parsed) continue;
 
         const verification = verifyNutzap(parsed, myConfig);
-        nutzaps.push({
+        
+        let dleqValid = false;
+        
+        if (verification.valid) {
+          dleqValid = await verifyProofsDleq(
+            parsed.proofs,
+            parsed.mintUrl,
+            parsed.unit
+          );
+        }
+
+        const error = verification.error ?? (verification.valid && !dleqValid 
+          ? 'DLEQ verification failed' 
+          : undefined);
+        
+          nutzaps.push({
           ...parsed,
-          verified: verification.valid,
-          error: verification.error,
+          verified: verification.valid && dleqValid,
+          error,
         });
       }
 
