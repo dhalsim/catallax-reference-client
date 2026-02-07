@@ -1,5 +1,9 @@
 # Nutzaps – Open todos
 
+**Workflow ref:** `NIP.md` – "Funding with ecash/cashu workflow" (Setup → Sending → Receiving → Pending cleared).
+
+---
+
 ## 1. Task Conclusion event: add nutzap support (NIP)
 
 **Ref:** `NIP.md` lines 98–99 (Task Conclusion kind 3402).
@@ -29,6 +33,24 @@ The protocol already defines the payout-receipt `e` tag with a fourth element `<
 3. **Require `e` tag – no nutzap without event.**  
    This client should not have a nutzap flow without a task event attached. Make `eventId` and `eventKind` required in `NutzapRequest` and `buildNutzapTags` (if not already). Fail early if not present.
 
+---
+
+## 4. Sender 7375 update when sending (NIP-60)
+
+**Ref:** `NIP.md` "Sending a nutzap" step 5; `docs/nutzaps/NIP-60.md` "Spending token"; `src/hooks/useNutzap.ts`.
+
+**Current state:** `useNutzap` publishes kind 9321 and calls `refetch()`, but does not update the sender's token events. Per NIP-60, when spending proofs, the client MUST delete/roll the old 7375 and create a new one with remaining proofs.
+
+**Todo:**
+
+- After publishing 9321, **update the sender's 7375**:
+  - Identify which token event(s) held the proofs that were spent.
+  - If the Cashu SDK returns change proofs, create a new 7375 with those proofs and `del: [destroyed-event-id]`.
+  - NIP-09 delete the old token event(s).
+- Optionally create kind 7376 (direction: out) for the sender's spending history.
+
+---
+
 ## 5. DLEQ proof verification
 
 **Ref:** NIP-61 "Verifying a Cashu Zap"; `docs/nutzaps/nuts/12.md`.
@@ -43,7 +65,7 @@ The protocol already defines the payout-receipt `e` tag with a fourth element `<
 
 ## 6. Incoming nutzaps and redemption UX
 
-**Ref:** `docs/nutzaps/NIP-61.md` lines 77–78 (Receiving nutzaps); `src/hooks/useIncomingNutzaps.ts`, `src/hooks/useRedeemNutzap.ts`.
+**Ref:** `NIP.md` "Receiving a nutzap", "Sender: pending cleared"; `docs/nutzaps/NIP-61.md` lines 77–78; `src/hooks/useIncomingNutzaps.ts`, `src/hooks/useRedeemNutzap.ts`.
 
 **Current state:**
 
@@ -55,14 +77,16 @@ The protocol already defines the payout-receipt `e` tag with a fourth element `<
 - Surface **receiving and redeeming nutzaps** in the UX (at least at a basic level).
 - Add a screen or section that uses `useIncomingNutzaps` and allows users to see and redeem incoming nutzaps.
 - Suggested placements: NutzapWalletSetup, Catallax dashboard, or a dedicated Nutzap/Wallet page.
+- For senders: when a 7376 is seen, treat the nutzap as no longer pending.
 
 ---
 
 ## 7. Kind 7376 content – add "created" tag and relay hint
 
-**Ref:** `docs/nutzaps/NIP-61.md` lines 96–107; `src/hooks/useRedeemNutzap.ts`.
+**Ref:** `NIP.md` "Receiving a nutzap" step 4; `docs/nutzaps/NIP-61.md` lines 96–107; `src/hooks/useRedeemNutzap.ts`.
 
 **Todo:**
 
 - Fix missing **"created"** tag in kind 7376 encrypted content: the NIP example includes `["e", "<7375-event-id>", "<relay-hint>", "created"]` for the new token event that was created. Add this when creating the token event (kind 7375) and record it in the redemption event content.
 - Add **relay hint** to the `e` tag in kind 7376 tags: `["e", "<9321-event-id>", "<relay-hint>", "redeemed"]` – use a non-empty relay hint when available.
+- **Optionally** publish 7376 to both sender's and recipient's relays so both parties can see the history (NIP-61 only requires sender's relays).

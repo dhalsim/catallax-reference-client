@@ -157,6 +157,39 @@ All custom event kinds use the `t` tag with "catallax" for efficient relay-level
 
 This client uses **NIP-60** (Cashu Wallets) and **NIP-61** (Nutzaps) for Nutzap payments. Kinds used (see `src/lib/nutzap.ts`):
 
+#### Funding with ecash/cashu workflow
+
+High-level flow for funding tasks with ecash via Nutzaps:
+
+**Setup (one-time)**
+
+1. Create a wallet (kind 17375) with mints and P2PK privkey. The privkey is separate from your Nostr key.
+2. Publish nutzap config (kind 10019): relays, mints, and P2PK pubkey for others to send you funds.
+3. Acquire token events (kind 7375) — your unspent proofs, stored and queried from **your relays**.
+
+**Sending a nutzap**
+
+1. Fetch recipient's kind 10019 (config) and kind 10002 (NIP-65) to determine target relays.
+2. Find a common mint; use recipient's P2PK pubkey from their 10019.
+3. Take proofs from your 7375 and create P2PK-locked proofs via the Cashu SDK. Do not create a new 7375 for the recipient — the proofs go into the 9321 event.
+4. Publish kind 9321 to recipient's relays.
+5. **Update your 7375**: delete/roll the token event(s) that held the spent proofs; create new 7375 with remaining proofs (and change, if any). Per NIP-60, this is required when spending.
+6. Optionally create kind 7376 (direction: out) for your spending history.
+
+**Receiving a nutzap**
+
+1. Fetch kind 9321 events p-tagging you from your relays.
+2. Swap proofs into your wallet (Cashu receive).
+3. Create new kind 7375 with the received proofs — add them to your wallet.
+4. Create kind 7376 (direction: in) with:
+   - `["e", "<9321-id>", "<relay-hint>", "redeemed"]` in tags
+   - `["e", "<7375-id>", "<relay-hint>", "created"]` in encrypted content (the new token event)
+5. Publish 7376 to sender's NIP-65 read relays. Optionally also publish to your relays so both parties can see the history.
+
+**Sender: pending cleared**
+
+When the sender sees the 7376 event, the nutzap is no longer pending.
+
 #### Kind 17375: Cashu wallet (replaceable)
 
 Encrypted P2PK privkey and mints. Content is NIP-44 encrypted.
