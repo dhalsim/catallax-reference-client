@@ -11,9 +11,18 @@ import {
   type ParsedNutzap,
 } from '@/lib/nutzap';
 
+/** Address of the nutzapped event (kind, pubkey, d) for matching to tasks. */
+export interface ReferencedEventAddress {
+  kind: number;
+  pubkey: string;
+  d: string | undefined;
+}
+
 export interface IncomingNutzapWithVerification extends ParsedNutzap {
   verified: boolean;
   error?: string;
+  /** Address of the event this nutzap targets (when eventId resolved). */
+  referencedEventAddress?: ReferencedEventAddress;
 }
 
 /** Incoming nutzaps (kind 9321) to current user, verified against their config. */
@@ -63,7 +72,7 @@ export function useIncomingNutzaps() {
             kinds: [NUTZAP_EVENT_KIND],
             '#p': [user.pubkey],
             '#u': mintUrls,
-            since: lastRedemptionQuery.data ?? 0,
+            since: lastRedemptionQuery.data,
             limit: 50,
           },
         ],
@@ -71,12 +80,20 @@ export function useIncomingNutzaps() {
       );
 
       const nutzaps: IncomingNutzapWithVerification[] = [];
+      const eventIdsToFetch = new Set<{ eventId: string; eventKind: number; relayHint: string }>();
 
       for (const event of events) {
         const parsed = parseNutzap(event);
+        
         if (!parsed) continue;
-
+        
         const verification = verifyNutzap(parsed, myConfig);
+        
+        eventIdsToFetch.add({
+          eventId: parsed.eventId,
+          eventKind: parsed.eventKind,
+          relayHint: parsed.relayHint,
+        });
         
         let dleqValid = false;
         
@@ -92,14 +109,41 @@ export function useIncomingNutzaps() {
           ? 'DLEQ verification failed' 
           : undefined);
         
-          nutzaps.push({
+        nutzaps.push({
           ...parsed,
           verified: verification.valid && dleqValid,
           error,
         });
       }
 
-      return nutzaps;
+      const eventIds = [...eventIdsToFetch.values()].map((e) => e.eventId);
+      const eventKinds = [...eventIdsToFetch.values()].map((e) => e.eventKind);
+
+      const referencedEvents = await nostr.query(
+        [
+          {
+            ids: eventIds,
+            kinds: eventKinds,
+          },
+        ],
+        { signal: AbortSignal.timeout(5000) }
+      );
+
+      // Attach referenced event address to each nutzap
+      return nutzaps.map((n) => {
+        const refEvent = referencedEvents.find((e) => e.id === n.eventId && e.kind === n.eventKind);
+
+        const refEventAddress = refEvent ? {
+          kind: refEvent.kind,
+          pubkey: refEvent.pubkey,
+          d: refEvent.tags.find(([name]) => name === 'd')?.[1],
+        } : undefined;
+
+        return {
+          ...n,
+          referencedEventAddress: refEventAddress,
+        };
+      });
     },
     enabled:
       !!user &&

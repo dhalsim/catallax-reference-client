@@ -24,7 +24,7 @@ interface TaskCardProps {
   task: TaskProposal;
   onApply?: (task: TaskProposal) => void;
   onManage?: (task: TaskProposal) => void;
-  onFund?: (task: TaskProposal, zapReceiptId: string) => void;
+  onFund?: (task: TaskProposal, zapReceiptId: string, receiptType?: 'zap' | 'nutzap') => void;
   showApplyButton?: boolean;
   showManageButton?: boolean;
   showFundButton?: boolean;
@@ -275,7 +275,7 @@ export function TaskCard({ task, onApply, onManage, onFund, showApplyButton, sho
             amount={parseInt(task.amount)}
             purpose={`Escrow funding for task: ${task.content.title}`}
             onPaymentComplete={(zapReceiptId: string) => {
-              onFund?.(task, zapReceiptId);
+              onFund?.(task, zapReceiptId, 'zap');
               setShowFundDialog(false);
             }}
           />
@@ -289,7 +289,7 @@ export function TaskCard({ task, onApply, onManage, onFund, showApplyButton, sho
             amount={parseInt(task.amount)}
             purpose={`Escrow funding for task: ${task.content.title}`}
             onComplete={(nutzapEventId) => {
-              onFund?.(task, nutzapEventId);
+              onFund?.(task, nutzapEventId, 'nutzap');
               setShowNutzapFundDialog(false);
             }}
             eventId={task.id}

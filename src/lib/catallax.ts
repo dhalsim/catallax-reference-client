@@ -62,6 +62,7 @@ export interface TaskProposal {
   categories: string[];
   status: TaskStatus;
   zapReceiptId?: string;
+  receiptType?: 'zap' | 'nutzap';
   detailsUrl?: string;
   fundingType: FundingType;
   goalId?: string;
@@ -157,7 +158,9 @@ export function parseTaskProposal(event: NostrEvent): TaskProposal | null {
     const amount = event.tags.find(([name]) => name === 'amount')?.[1];
     const categories = event.tags.filter(([name]) => name === 't').map(([, value]) => value);
     const status = event.tags.find(([name]) => name === 'status')?.[1] as TaskStatus;
-    const zapReceiptId = event.tags.find(([name, , , marker]) => name === 'e' && marker === 'zap')?.[1];
+    const receiptETag = event.tags.find(([name, , , marker]) => name === 'e' && (marker === 'zap' || marker === 'nutzap'));
+    const zapReceiptId = receiptETag?.[1];
+    const receiptType = receiptETag?.[3] === 'nutzap' ? 'nutzap' : (receiptETag?.[3] === 'zap' ? 'zap' : undefined);
     const detailsUrl = event.tags.find(([name]) => name === 'r')?.[1];
 
     // NIP-75 crowdfunding fields
@@ -183,6 +186,7 @@ export function parseTaskProposal(event: NostrEvent): TaskProposal | null {
       categories,
       status,
       zapReceiptId,
+      receiptType,
       detailsUrl,
       fundingType,
       goalId,

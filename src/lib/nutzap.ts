@@ -47,7 +47,9 @@ export interface ParsedNutzap {
   proofs: Proof[];
   totalAmount: number;
   comment: string;
-  eventId?: string;
+  eventId: string;
+  relayHint: string;
+  eventKind: number;
   created_at: number;
 }
 
@@ -90,6 +92,15 @@ export function parseNutzap(event: NostrEvent): ParsedNutzap | null {
   const unit = event.tags.find(([name]) => name === 'unit')?.[1] ?? 'sat';
   const recipientPubkey = event.tags.find(([name]) => name === 'p')?.[1];
   const eventId = event.tags.find(([name]) => name === 'e')?.[1];
+  const relayHint = event.tags.find(([name]) => name === 'e')?.[2];
+  const eventKind = event.tags.find(([name]) => name === 'k')?.[1];
+
+  
+  if (!eventId || !relayHint) return null;
+  
+  if (!eventKind) return null;
+  const eventKindNumber = Number(eventKind);
+  if (!Number.isInteger(eventKindNumber) || eventKindNumber <= 0) return null;
 
   if (!mintUrl || !recipientPubkey) return null;
 
@@ -103,6 +114,8 @@ export function parseNutzap(event: NostrEvent): ParsedNutzap | null {
     totalAmount: calculateProofsAmount(proofs),
     comment: event.content,
     eventId,
+    relayHint,
+    eventKind: eventKindNumber,
     created_at: event.created_at,
   };
 }

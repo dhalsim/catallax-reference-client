@@ -26,6 +26,8 @@ import { LightningSplitPaymentDialog } from './LightningSplitPaymentDialog';
 import { GoalProgressBar } from './GoalProgressBar';
 import { ContributorsList } from './ContributorsList';
 import { useZapGoal } from '@/hooks/useZapGoal';
+import { useIncomingNutzaps } from '@/hooks/useIncomingNutzaps';
+import { useRedeemNutzap } from '@/hooks/useRedeemNutzap';
 
 interface TaskManagementProps {
   task: TaskProposal;
@@ -91,6 +93,7 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
   const [showRefundSplitDialog, setShowRefundSplitDialog] = useState(false);
   const [showPayoutSplitDialog, setShowPayoutSplitDialog] = useState(false);
   const [conclusionZapReceiptId, setConclusionZapReceiptId] = useState('');
+  const [conclusionReceiptType, setConclusionReceiptType] = useState<'zap' | 'nutzap'>('zap');
   const [showPaymentMethodForFund, setShowPaymentMethodForFund] = useState(false);
   const [showPaymentMethodForPayout, setShowPaymentMethodForPayout] = useState(false);
   const [showPaymentMethodForRefund, setShowPaymentMethodForRefund] = useState(false);
@@ -102,6 +105,17 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
   const { canReceive: workerAcceptsNutzaps } = useCanReceiveNutzaps(task.workerPubkey);
   const { canReceive: patronAcceptsNutzaps } = useCanReceiveNutzaps(task.patronPubkey);
   const [cancelState, setCancelState] = useState<'idle' | 'syncing' | 'complete'>('idle');
+
+  const { nutzaps: incomingNutzaps, refetch: refetchNutzaps } = useIncomingNutzaps();
+  const { mutateAsync: redeemNutzap, isPending: isRedeemingNutzap } = useRedeemNutzap();
+
+  const nutzapsForTask = incomingNutzaps.filter(
+    (n) =>
+      n.referencedEventAddress &&
+      n.referencedEventAddress.kind === CATALLAX_KINDS.TASK_PROPOSAL &&
+      n.referencedEventAddress.pubkey === task.patronPubkey &&
+      n.referencedEventAddress.d === task.d
+  );
 
   // Generic operation state for funding, worker assignment, etc.
   type OperationType = 'funding' | 'assigning' | 'removing' | 'submitting' | 'crowdfund-marking';
@@ -163,7 +177,7 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
     );
   }
 
-  const updateTaskStatus = (newStatus: TaskStatus, zapReceiptId?: string, workerPubkeyOverride?: string, operation?: OperationType) => {
+  const updateTaskStatus = (newStatus: TaskStatus, zapReceiptId?: string, workerPubkeyOverride?: string, operation?: OperationType, receiptType?: 'zap' | 'nutzap') => {
     // Set operation state to syncing if an operation type is provided
     if (operation) {
       setOperationState({ type: operation, status: 'syncing' });
@@ -196,7 +210,9 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
     }
 
     if (task.zapReceiptId || zapReceiptId) {
-      tags.push(['e', task.zapReceiptId || zapReceiptId || '', '', 'zap']);
+      const receipt = task.zapReceiptId || zapReceiptId || '';
+      const type = receiptType ?? task.receiptType ?? 'zap';
+      tags.push(['e', receipt, '', type]);
     }
 
     // Add task categories
@@ -297,7 +313,9 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
     }
 
     if (task.zapReceiptId || zapReceiptId) {
-      tags.push(['e', task.zapReceiptId || zapReceiptId || '', '', 'zap']);
+      const receipt = task.zapReceiptId || zapReceiptId || '';
+      const type = task.receiptType ?? 'zap';
+      tags.push(['e', receipt, '', type]);
     }
 
     // Add task categories
@@ -361,10 +379,10 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
     });
   };
 
-  const handleFundEscrow = (zapReceiptId: string) => {
+  const handleFundEscrow = (zapReceiptId: string, receiptType: 'zap' | 'nutzap' = 'zap') => {
     // Automatically update task status to "funded" after successful Lightning payment
     setShowFundDialog(false);
-    updateTaskStatus('funded', zapReceiptId, undefined, 'funding');
+    updateTaskStatus('funded', zapReceiptId, undefined, 'funding', receiptType);
   };
 
   const handleAssignWorker = () => {
@@ -426,15 +444,17 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
     updateTaskStatus('submitted', undefined, undefined, 'submitting');
   };
 
-  const handleRefundPatron = (zapReceiptId: string) => {
+  const handleRefundPatron = (zapReceiptId: string, receiptType: 'zap' | 'nutzap' = 'zap') => {
     setConclusionZapReceiptId(zapReceiptId);
+    setConclusionReceiptType(receiptType);
     setShowRefundDialog(false);
     setShowRefundSplitDialog(false);
     setShowConclusionForm(true);
   };
 
-  const handlePayWorker = (zapReceiptId: string) => {
+  const handlePayWorker = (zapReceiptId: string, receiptType: 'zap' | 'nutzap' = 'zap') => {
     setConclusionZapReceiptId(zapReceiptId);
+    setConclusionReceiptType(receiptType);
     setShowPayoutDialog(false);
     setShowPayoutSplitDialog(false);
     setShowConclusionForm(true);
@@ -722,10 +742,12 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
         <TaskConclusionForm
           task={task}
           payoutZapReceiptId={conclusionZapReceiptId}
+          payoutReceiptType={conclusionReceiptType}
           onSuccess={() => {
             setShowConclusionForm(false);
             setShowDebugConclusionForm(false);
             setConclusionZapReceiptId('');
+            setConclusionReceiptType('zap');
             onUpdate?.();
           }}
         />
@@ -796,73 +818,6 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
                     Mark as Funded (Goal Reached)
                   </Button>
                 )}
-              </div>
-            )}
-
-            {task.status === 'proposed' && task.arbiterPubkey && task.fundingType !== 'crowdfunding' && (
-              <div className="space-y-3">
-                <Alert>
-                  <Zap className="h-4 w-4" />
-                  <AlertDescription>
-                    <strong>Fund Escrow:</strong> Click to send Lightning payment to the arbiter.
-                    Task status will automatically update to "funded" when payment completes.
-                  </AlertDescription>
-                </Alert>
-                <Button
-                  onClick={() => {
-                    if (arbiterAcceptsNutzaps) {
-                      setShowPaymentMethodForFund(true);
-                    } else {
-                      setShowFundDialog(true);
-                    }
-                  }}
-                  disabled={isPending}
-                  className="w-full"
-                >
-                  <Zap className="h-4 w-4 mr-2" />
-                  Fund Escrow ({formatSats(task.amount)})
-                </Button>
-
-                {/* Debug: Mark as funded if payment was already made */}
-                <div className="pt-2 border-t border-dashed border-orange-200">
-                  <Alert className="border-orange-200 bg-orange-50">
-                    <Bug className="h-4 w-4 text-orange-600" />
-                    <AlertDescription className="text-orange-800">
-                      <strong>Already paid?</strong> If you already sent payment but the status didn't update,
-                      enter the zap receipt ID below to mark this task as funded with proof of payment.
-                    </AlertDescription>
-                  </Alert>
-                  <div className="mt-2 space-y-2">
-                    <Input
-                      id="manualZapReceipt"
-                      placeholder="Zap receipt event ID (64 hex chars)"
-                      className="font-mono text-xs"
-                    />
-                    <Button
-                      onClick={() => {
-                        const input = document.getElementById('manualZapReceipt') as HTMLInputElement;
-                        const zapId = input?.value?.trim();
-                        if (zapId && /^[0-9a-fA-F]{64}$/.test(zapId)) {
-                          updateTaskStatus('funded', zapId);
-                        } else if (!zapId) {
-                          updateTaskStatus('funded');
-                        } else {
-                          toast({
-                            title: 'Invalid ID',
-                            description: 'Please enter a valid 64-character hex event ID, or leave empty.',
-                            variant: 'destructive',
-                          });
-                        }
-                      }}
-                      disabled={isPending}
-                      variant="outline"
-                      className="w-full border-orange-200 text-orange-700 hover:bg-orange-50"
-                    >
-                      <Bug className="h-4 w-4 mr-2" />
-                      Debug: Mark as Funded
-                    </Button>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1022,6 +977,55 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
               >
                 Mark Work as Submitted
               </Button>
+            )}
+
+            {task.status === 'concluded' && nutzapsForTask.length > 0 && (
+              <div className="space-y-2">
+                <Alert>
+                  <Bitcoin className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Payout nutzaps for this task:</strong> Redeem to add the payment to your wallet.
+                  </AlertDescription>
+                </Alert>
+                <div className="space-y-2">
+                  {nutzapsForTask.map((nutzap) => (
+                    <div
+                      key={nutzap.id}
+                      className="flex items-center justify-between rounded-lg border p-3"
+                    >
+                      <span className="text-sm">
+                        {formatSats(nutzap.totalAmount)} {nutzap.unit}
+                        {nutzap.verified ? '' : (
+                          <Badge variant="destructive" className="ml-2">
+                            {nutzap.error ?? 'Unverified'}
+                          </Badge>
+                        )}
+                      </span>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          if (!nutzap.verified) return;
+                          try {
+                            await redeemNutzap(nutzap);
+                            refetchNutzaps();
+                            invalidateAllCatallaxQueries();
+                            onUpdate?.();
+                          } catch {
+                            // Error handled in hook
+                          }
+                        }}
+                        disabled={!nutzap.verified || isRedeemingNutzap}
+                      >
+                        {isRedeemingNutzap ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Redeem'
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -1256,7 +1260,7 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
           amount={parseInt(task.amount)}
           purpose={`Escrow funding for task: ${task.content.title}`}
           onComplete={(nutzapEventId) => {
-            handleFundEscrow(nutzapEventId);
+            handleFundEscrow(nutzapEventId, 'nutzap');
             setShowNutzapFundDialog(false);
           }}
           eventId={task.id}
@@ -1289,7 +1293,7 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
           amount={parseInt(task.amount)}
           purpose={`Payment for completed work: ${task.content.title}`}
           onComplete={(nutzapEventId) => {
-            handlePayWorker(nutzapEventId);
+            handlePayWorker(nutzapEventId, 'nutzap');
             setShowNutzapPayoutDialog(false);
           }}
           eventId={task.id}
@@ -1319,7 +1323,7 @@ export function TaskManagement({ task, onUpdate }: TaskManagementProps) {
         amount={parseInt(task.amount)}
         purpose={`Refund for task: ${task.content.title}`}
         onComplete={(nutzapEventId) => {
-          handleRefundPatron(nutzapEventId);
+          handleRefundPatron(nutzapEventId, 'nutzap');
           setShowNutzapRefundDialog(false);
         }}
         eventId={task.id}

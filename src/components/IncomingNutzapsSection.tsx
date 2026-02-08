@@ -1,7 +1,8 @@
+import { Link } from 'react-router-dom';
 import { useIncomingNutzaps } from '@/hooks/useIncomingNutzaps';
 import { useRedeemNutzap } from '@/hooks/useRedeemNutzap';
 import { useAuthor } from '@/hooks/useAuthor';
-import { formatSats } from '@/lib/catallax';
+import { formatSats, CATALLAX_KINDS } from '@/lib/catallax';
 import { genUserName } from '@/lib/genUserName';
 import {
   Card,
@@ -14,7 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowDownLeft, Loader2 } from 'lucide-react';
+import { ArrowDownLeft, ExternalLink, Loader2 } from 'lucide-react';
+import { nip19 } from 'nostr-tools';
 import type { IncomingNutzapWithVerification } from '@/hooks/useIncomingNutzaps';
 
 function NutzapRow({
@@ -29,6 +31,15 @@ function NutzapRow({
   const author = useAuthor(nutzap.pubkey);
   const displayName =
     author.data?.metadata?.name ?? genUserName(nutzap.pubkey);
+
+  const taskNaddr =
+    nutzap.referencedEventAddress?.kind === CATALLAX_KINDS.TASK_PROPOSAL && nutzap.referencedEventAddress?.d
+      ? nip19.naddrEncode({
+          kind: nutzap.referencedEventAddress.kind,
+          pubkey: nutzap.referencedEventAddress.pubkey,
+          identifier: nutzap.referencedEventAddress?.d,
+        })
+      : null;
 
   return (
     <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
@@ -56,21 +67,30 @@ function NutzapRow({
           )}
         </div>
       </div>
-      <Button
-        size="sm"
-        onClick={onRedeem}
-        disabled={!nutzap.verified || isRedeeming}
-        className="shrink-0"
-      >
-        {isRedeeming ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <>
-            <ArrowDownLeft className="mr-1 h-4 w-4" />
-            Redeem
-          </>
+      <div className="flex shrink-0 items-center gap-2">
+        {taskNaddr && (
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/task/${taskNaddr}`}>
+              <ExternalLink className="mr-1 h-4 w-4" />
+              View task
+            </Link>
+          </Button>
         )}
-      </Button>
+        <Button
+          size="sm"
+          onClick={onRedeem}
+          disabled={!nutzap.verified || isRedeeming}
+        >
+          {isRedeeming ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <ArrowDownLeft className="mr-1 h-4 w-4" />
+              Redeem
+            </>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

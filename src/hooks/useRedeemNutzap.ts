@@ -64,7 +64,7 @@ export function useRedeemNutzap() {
       await wallet.loadMint();
 
       const newProofs = await wallet.receive(
-        { mint: nutzap.mintUrl, proofs: nutzap.proofs },
+        { mint: nutzap.mintUrl, proofs: nutzap.proofs, unit: nutzap.unit },
         { privkey, requireDleq: true }
       );
 

@@ -17,9 +17,10 @@ interface TaskConclusionFormProps {
   task: TaskProposal;
   onSuccess?: () => void;
   payoutZapReceiptId?: string;
+  payoutReceiptType?: 'zap' | 'nutzap';
 }
 
-export function TaskConclusionForm({ task, onSuccess: _onSuccess, payoutZapReceiptId }: TaskConclusionFormProps) {
+export function TaskConclusionForm({ task, onSuccess: _onSuccess, payoutZapReceiptId, payoutReceiptType = 'zap' }: TaskConclusionFormProps) {
   const { user } = useCurrentUser();
   const { mutate: createEvent, isPending } = useNostrPublish();
   const { toast } = useToast();
@@ -58,7 +59,7 @@ export function TaskConclusionForm({ task, onSuccess: _onSuccess, payoutZapRecei
     }
 
     if (formData.payoutZapReceiptId) {
-      conclusionTags.push(['e', formData.payoutZapReceiptId]);
+      conclusionTags.push(['e', formData.payoutZapReceiptId, '', payoutReceiptType]);
     }
 
     conclusionTags.push(['e', task.id]);
@@ -100,7 +101,7 @@ export function TaskConclusionForm({ task, onSuccess: _onSuccess, payoutZapRecei
         }
 
         if (task.zapReceiptId) {
-          taskTags.push(['e', task.zapReceiptId, '', 'zap']);
+          taskTags.push(['e', task.zapReceiptId, '', task.receiptType ?? 'zap']);
         }
 
         // Add task categories

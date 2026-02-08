@@ -99,7 +99,7 @@ export default function CatallaxDashboard() {
     setActiveTab('manage');
   };
 
-  const handleTaskFund = (task: TaskProposal, zapReceiptId: string) => {
+  const handleTaskFund = (task: TaskProposal, zapReceiptId: string, receiptType: 'zap' | 'nutzap') => {
     // Seamlessly update task status to "funded" after Lightning payment completes
     const content = task.content;
     const tags: string[][] = [
@@ -108,7 +108,7 @@ export default function CatallaxDashboard() {
       ['amount', task.amount],
       ['t', 'catallax'],
       ['status', 'funded'],
-      ['e', zapReceiptId, '', 'zap'], // Reference to the zap receipt
+      ['e', zapReceiptId, '', receiptType],
     ];
 
     if (task.arbiterPubkey) {
