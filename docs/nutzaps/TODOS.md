@@ -4,7 +4,7 @@
 
 ---
 
-## 1. Task Conclusion event: add nutzap support (NIP)
+## 1. Task Conclusion event: add nutzap support (NIP) ✅
 
 **Ref:** `NIP.md` lines 98–99 (Task Conclusion kind 3402).
 
@@ -71,12 +71,12 @@ The protocol already defines the payout-receipt `e` tag with a fourth element `<
 
 ---
 
-## 7. Kind 7376 content – add "created" tag and relay hint
+## 7. Kind 7376 content – add "created" tag and relay hint ✅
 
 **Ref:** `NIP.md` "Receiving a nutzap" step 4; `docs/nutzaps/NIP-61.md` lines 96–107; `src/hooks/useRedeemNutzap.ts`.
 
-**Todo:**
+**Done:**
 
-- Fix missing **"created"** tag in kind 7376 encrypted content: the NIP example includes `["e", "<7375-event-id>", "<relay-hint>", "created"]` for the new token event that was created. Add this when creating the token event (kind 7375) and record it in the redemption event content.
-- Add **relay hint** to the `e` tag in kind 7376 tags: `["e", "<9321-event-id>", "<relay-hint>", "redeemed"]` – use a non-empty relay hint when available.
-- **Optionally** publish 7376 to both sender's and recipient's relays so both parties can see the history (NIP-61 only requires sender's relays).
+- Added **"created"** tag in kind 7376 encrypted content: `["e", "<7375-event-id>", "<relay-hint>", "created"]` for the new token event.
+- Added **relay hint** to the `e` tag in kind 7376 tags: `["e", "<9321-event-id>", "<relay-hint>", "redeemed"]` using `redemptionRelays[0] ?? ''`.
+- Publish 7376 to sender's NIP-65 read relays (single query). Relay hint uses `nutzap.relayHint` from the parsed 9321 event.

@@ -79,7 +79,23 @@ export function useRedeemNutzap() {
         tokenContent
       );
 
-      await createEvent({
+      // NIP-61: Publish 7376 to sender's NIP-65 read relays
+      const nip65Events = await nostr.query(
+        [{ kinds: [10002], authors: [nutzap.pubkey], limit: 1 }],
+        { signal: AbortSignal.timeout(5000) }
+      );
+      
+      const senderReadRelays =
+        nip65Events.length > 0 ? parseReadRelaysFromNip65(nip65Events[0]) : [];
+      
+      const redemptionRelays =
+        senderReadRelays.length > 0
+          ? mergeAndDeduplicateRelays(senderReadRelays)
+          : activeRelayUrls;
+      
+      const relayHint = nutzap.relayHint ?? '';
+
+      const newTokenEvent = await createEvent({
         kind: NUTZAP_TOKEN_KIND,
         content: encryptedTokenContent,
         tags: [],
@@ -89,6 +105,7 @@ export function useRedeemNutzap() {
         ['direction', 'in'],
         ['amount', nutzap.totalAmount.toString()],
         ['unit', nutzap.unit],
+        ['e', newTokenEvent.id, relayHint, 'created'],
       ]);
 
       const encryptedHistoryContent = await user.signer.nip44.encrypt(
@@ -96,23 +113,11 @@ export function useRedeemNutzap() {
         historyContent
       );
 
-      // NIP-61: Publish 7376 to sender's NIP-65 read relays
-      const nip65Events = await nostr.query(
-        [{ kinds: [10002], authors: [nutzap.pubkey], limit: 1 }],
-        { signal: AbortSignal.timeout(5000) }
-      );
-      const senderReadRelays =
-        nip65Events.length > 0 ? parseReadRelaysFromNip65(nip65Events[0]) : [];
-      const redemptionRelays =
-        senderReadRelays.length > 0
-          ? mergeAndDeduplicateRelays(senderReadRelays)
-          : activeRelayUrls;
-
       await createEvent({
         kind: NUTZAP_REDEMPTION_KIND,
         content: encryptedHistoryContent,
         tags: [
-          ['e', nutzap.id, '', 'redeemed'],
+          ['e', nutzap.id, relayHint, 'redeemed'],
           ['p', nutzap.pubkey],
         ],
         relays: redemptionRelays,
